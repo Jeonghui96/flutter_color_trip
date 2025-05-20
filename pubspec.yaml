@@ -1,0 +1,30 @@
+name: flutter_colortrip_app
+description: A Flutter app for coloring maps based on photos taken during travels.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.7.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  google_maps_flutter: ^2.5.0
+
+  provider: ^6.0.5
+  image_picker: ^0.8.7+5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
