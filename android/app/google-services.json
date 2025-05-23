@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "257359194449",
+    "project_id": "flutter-colortrip-36a9a",
+    "storage_bucket": "flutter-colortrip-36a9a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:257359194449:android:3a678f19720bced7640b70",
+        "android_client_info": {
+          "package_name": "com.example.flutter_colortrip_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1CPrR8rqDrji-nSEt1kin5in0lJTU4oc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

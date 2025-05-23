@@ -1,53 +1,79 @@
-// main.dart
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
-import 'screens/map_screen.dart';
-import 'screens/profile_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
-void main() {
-  runApp(const ColorTripApp());
+import 'screens/map_colored_screen.dart';
+import 'screens/upload_screen.dart';
+import 'screens/settings_screen.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(const MyApp());
 }
 
-class ColorTripApp extends StatelessWidget {
-  const ColorTripApp({Key? key}) : super(key: key);
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ColorTrip',
-      theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal)),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
       home: const MainNavigation(),
     );
   }
 }
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({Key? key}) : super(key: key);
+  const MainNavigation({super.key});
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _currentIndex = 0;
-  final List<Widget> _pages = const [
-    HomeScreen(),
-    MapScreen(),
-    ProfileScreen(),
+  int _selectedIndex = 0;
+
+  final List<Widget> _screens = [
+    const MapColoredScreen(),
+    const UploadScreen(),
+    const SettingsScreen(),
   ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_currentIndex],
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
+      ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: Colors.teal,
-        onTap: (i) => setState(() => _currentIndex = i),
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: '내 정보'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map),
+            label: '지도 보기',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add_location_alt),
+            label: '지도 색칠',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: '설정',
+          ),
         ],
       ),
     );
