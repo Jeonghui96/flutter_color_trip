@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -21,15 +22,30 @@ class _UploadScreenState extends State<UploadScreen> {
 
   DateTime? selectedDate;
   File? _selectedImage;
+  List<Color> extractedColors = [];
 
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked != null) {
+      final imageFile = File(picked.path);
       setState(() {
-        _selectedImage = File(picked.path);
+        _selectedImage = imageFile;
       });
-      debugPrint("선택된 이미지 경로: ${_selectedImage!.path}");
+      await _extractColors(imageFile);
     }
+  }
+
+  Future<void> _extractColors(File imageFile) async {
+    final image = Image.file(imageFile);
+    final palette = await PaletteGenerator.fromImageProvider(
+      image.image,
+      size: const Size(200, 200),
+      maximumColorCount: 5,
+    );
+
+    setState(() {
+      extractedColors = palette.colors.toList();
+    });
   }
 
   Future<void> _pickDate() async {
@@ -43,7 +59,6 @@ class _UploadScreenState extends State<UploadScreen> {
       setState(() {
         selectedDate = date;
       });
-      debugPrint("선택된 날짜: ${selectedDate.toString()}");
     }
   }
 
@@ -51,7 +66,8 @@ class _UploadScreenState extends State<UploadScreen> {
     if (_selectedImage == null ||
         countryController.text.isEmpty ||
         cityController.text.isEmpty ||
-        selectedDate == null) {
+        selectedDate == null ||
+        colorController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('모든 필드를 입력하세요.')),
       );
@@ -62,18 +78,11 @@ class _UploadScreenState extends State<UploadScreen> {
       final uid = "test_user_id"; // 실제 로그인 사용자 ID로 교체
       final tripId = const Uuid().v4();
 
-      debugPrint("업로드 시작 - 사용자 ID: $uid, 여행 ID: $tripId");
-
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('users/$uid/trips/$tripId.jpg');
-
-      debugPrint("Storage 참조 경로: ${storageRef.fullPath}");
       await storageRef.putFile(_selectedImage!);
-      debugPrint("이미지 업로드 성공");
-
       final photoUrl = await storageRef.getDownloadURL();
-      debugPrint("다운로드 URL: $photoUrl");
 
       await FirebaseFirestore.instance
           .collection('users')
@@ -94,8 +103,6 @@ class _UploadScreenState extends State<UploadScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('업로드 성공')),
       );
-
-      // 초기화
       countryController.clear();
       cityController.clear();
       reviewController.clear();
@@ -103,9 +110,10 @@ class _UploadScreenState extends State<UploadScreen> {
       setState(() {
         selectedDate = null;
         _selectedImage = null;
+        extractedColors = [];
       });
     } catch (e) {
-      debugPrint('업로드 중 오류 발생: $e');
+      debugPrint('Error uploading: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('업로드 실패')),
       );
@@ -129,10 +137,31 @@ class _UploadScreenState extends State<UploadScreen> {
                 : const Placeholder(fallbackHeight: 200),
             ElevatedButton(onPressed: _pickImage, child: const Text('사진 선택')),
             const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              children: extractedColors.map((color) {
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      colorController.text = color.value.toRadixString(16);
+                    });
+                  },
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: color,
+                      border: Border.all(width: 2, color: Colors.black),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 10),
             TextField(controller: countryController, decoration: const InputDecoration(labelText: '국가')),
             TextField(controller: cityController, decoration: const InputDecoration(labelText: '도시')),
             TextField(controller: reviewController, decoration: const InputDecoration(labelText: '리뷰')),
-            TextField(controller: colorController, decoration: const InputDecoration(labelText: '색상(hex)')),
+            TextField(controller: colorController, decoration: const InputDecoration(labelText: '선택한 색상(hex)')),
             const SizedBox(height: 10),
             ElevatedButton(onPressed: _pickDate, child: Text(dateText)),
             const SizedBox(height: 20),

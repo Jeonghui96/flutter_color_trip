@@ -47,5 +47,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+		<key>NSLocationWhenInUseUsageDescription</key>
+	<string>앱 사용 중 현재 위치를 사용합니다.</string>
+	<key>io.flutter.embedded_views_preview</key>
+	<true/>
+	
 </dict>
 </plist>
