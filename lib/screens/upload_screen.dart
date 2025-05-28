@@ -3,174 +3,187 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
+import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
+import 'package:flutter_exif_rotation/flutter_exif_rotation.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 class UploadScreen extends StatefulWidget {
-  const UploadScreen({super.key});
+  final String uid;
+  final String? groupId;
+
+  const UploadScreen({super.key, required this.uid, this.groupId});
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
 }
 
 class _UploadScreenState extends State<UploadScreen> {
-  final TextEditingController countryController = TextEditingController();
-  final TextEditingController cityController = TextEditingController();
-  final TextEditingController reviewController = TextEditingController();
-  final TextEditingController colorController = TextEditingController();
+  File? _image;
+  bool _isLoading = false;
+  List<Color> _extractedColors = [];
+  Color? _selectedColor;
+  String? _selectedColorName;
 
-  DateTime? selectedDate;
-  File? _selectedImage;
-  List<Color> extractedColors = [];
+  final _countryController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _placeController = TextEditingController();
+  final _memoController = TextEditingController();
 
   Future<void> _pickImage() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked != null) {
-      final imageFile = File(picked.path);
+    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      final rotatedImage = await FlutterExifRotation.rotateImage(path: pickedFile.path);
+      final extracted = await _extractColorsFromImage(rotatedImage);
       setState(() {
-        _selectedImage = imageFile;
+        _image = rotatedImage;
+        _extractedColors = extracted;
+        _selectedColor = extracted.isNotEmpty ? extracted.first : null;
+        _selectedColorName = _selectedColor != null ? getColorName(_selectedColor!) : null;
       });
-      await _extractColors(imageFile);
     }
   }
 
-  Future<void> _extractColors(File imageFile) async {
+  Future<List<Color>> _extractColorsFromImage(File imageFile) async {
     final image = Image.file(imageFile);
     final palette = await PaletteGenerator.fromImageProvider(
       image.image,
       size: const Size(200, 200),
       maximumColorCount: 5,
     );
+    return palette.colors.take(5).toList();
+  }
 
-    setState(() {
-      extractedColors = palette.colors.toList();
+  Future<void> _upload() async {
+    if (_image == null ||
+        _countryController.text.isEmpty ||
+        _cityController.text.isEmpty ||
+        _placeController.text.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    final fileName = path.basename(_image!.path);
+    final ref = FirebaseStorage.instance.ref().child('uploads/${widget.uid}/$fileName');
+    await ref.putFile(_image!);
+    final downloadUrl = await ref.getDownloadURL();
+
+    final docId = const Uuid().v4();
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.uid)
+        .collection('trips')
+        .doc(docId)
+        .set({
+      'imageUrl': downloadUrl,
+      'country': _countryController.text,
+      'city': _cityController.text,
+      'place': _placeController.text,
+      'memo': _memoController.text,
+      'color': _selectedColor?.value,
+      'timestamp': Timestamp.now(),
+      if (widget.groupId != null) 'groupId': widget.groupId,
     });
+
+    setState(() => _isLoading = false);
+    Navigator.pop(context);
   }
 
-  Future<void> _pickDate() async {
-    final DateTime? date = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2015),
-      lastDate: DateTime(2100),
+  Widget _buildColorCircles() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: _extractedColors.map((color) {
+        final isSelected = _selectedColor == color;
+        return GestureDetector(
+          onTap: () {
+            setState(() {
+              _selectedColor = color;
+              _selectedColorName = getColorName(color);
+            });
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? Colors.black : Colors.grey.shade300,
+                width: isSelected ? 3 : 1,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
-    if (date != null) {
-      setState(() {
-        selectedDate = date;
-      });
-    }
   }
 
-  Future<void> uploadTripData() async {
-    if (_selectedImage == null ||
-        countryController.text.isEmpty ||
-        cityController.text.isEmpty ||
-        selectedDate == null ||
-        colorController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('모든 필드를 입력하세요.')),
-      );
-      return;
-    }
-
-    try {
-      final uid = "test_user_id"; // 실제 로그인 사용자 ID로 교체
-      final tripId = const Uuid().v4();
-
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('users/$uid/trips/$tripId.jpg');
-      await storageRef.putFile(_selectedImage!);
-      final photoUrl = await storageRef.getDownloadURL();
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('trips')
-          .doc(tripId)
-          .set({
-        'photo_url': photoUrl,
-        'country': countryController.text.trim(),
-        'city': cityController.text.trim(),
-        'review': reviewController.text.trim(),
-        'color': colorController.text.trim(),
-        'date': selectedDate!.toIso8601String(),
-        'tripId': tripId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('업로드 성공')),
-      );
-      countryController.clear();
-      cityController.clear();
-      reviewController.clear();
-      colorController.clear();
-      setState(() {
-        selectedDate = null;
-        _selectedImage = null;
-        extractedColors = [];
-      });
-    } catch (e) {
-      debugPrint('Error uploading: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('업로드 실패')),
-      );
-    }
-  }
-
+ String getColorName(Color color) {
+  int r = color.red, g = color.green, b = color.blue;
+  if (r > 180 && g < 100 && b < 100) return '빨간색';
+  if (r > 200 && g > 180 && b < 100) return '주황색';
+  if (r > 200 && g > 200 && b < 100) return '노란색';
+  if (r < 100 && g > 180 && b < 100) return '초록색';
+  if (r < 120 && g < 120 && b > 180) return '파란색';
+  if (r > 150 && b > 150 && g < 100) return '자주색';
+  if (r > 230 && g > 230 && b > 230) return '흰색';
+  if (r < 60 && g < 60 && b < 60) return '검정색';
+  return '기타';
+}
   @override
   Widget build(BuildContext context) {
-    final dateText = selectedDate != null
-        ? DateFormat('yyyy-MM-dd').format(selectedDate!)
-        : '날짜 선택';
-
     return Scaffold(
       appBar: AppBar(title: const Text('여행 기록 업로드')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _selectedImage != null
-                ? Image.file(_selectedImage!, height: 200)
-                : const Placeholder(fallbackHeight: 200),
-            ElevatedButton(onPressed: _pickImage, child: const Text('사진 선택')),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              children: extractedColors.map((color) {
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      colorController.text = color.value.toRadixString(16);
-                    });
-                  },
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: color,
-                      border: Border.all(width: 2, color: Colors.black),
-                    ),
-                  ),
-                );
-              }).toList(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(children: [
+          GestureDetector(
+            onTap: _pickImage,
+            child: Container(
+              height: 200,
+              width: double.infinity,
+              color: Colors.grey[300],
+              child: _image == null
+                  ? const Center(child: Text('이미지를 선택하세요'))
+                  : Image.file(_image!, fit: BoxFit.cover),
             ),
-            const SizedBox(height: 10),
-            TextField(controller: countryController, decoration: const InputDecoration(labelText: '국가')),
-            TextField(controller: cityController, decoration: const InputDecoration(labelText: '도시')),
-            TextField(controller: reviewController, decoration: const InputDecoration(labelText: '리뷰')),
-            TextField(controller: colorController, decoration: const InputDecoration(labelText: '선택한 색상(hex)')),
-            const SizedBox(height: 10),
-            ElevatedButton(onPressed: _pickDate, child: Text(dateText)),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: uploadTripData,
-              child: const Text('업로드'),
+          ),
+          const SizedBox(height: 12),
+          if (_extractedColors.isNotEmpty) _buildColorCircles(),
+          if (_selectedColorName != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Text(
+                '선택된 색상: $_selectedColorName',
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
+              ),
             ),
-          ],
-        ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _countryController,
+            decoration: const InputDecoration(labelText: '나라'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _cityController,
+            decoration: const InputDecoration(labelText: '도시'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _placeController,
+            decoration: const InputDecoration(labelText: '장소'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _memoController,
+            decoration: const InputDecoration(labelText: '메모'),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _isLoading ? null : _upload,
+            child: _isLoading ? const CircularProgressIndicator() : const Text('업로드'),
+          )
+        ]),
       ),
     );
   }

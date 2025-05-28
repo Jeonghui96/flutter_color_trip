@@ -11,42 +11,70 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  intl: ^0.18.1
-  google_maps_flutter: ^2.5.0
-  provider: ^6.0.5
-  image_picker: ^0.8.7+5
-  palette_generator: ^0.3.3
-  geocoding: ^2.0.5
+
+  # 화면 관련
+  google_maps_flutter: ^2.6.0
+  provider: ^6.1.2
+  flutter_typeahead: ^5.2.0
+
+  # 이미지 처리
+  image_picker: ^1.1.2
+  palette_generator: ^0.3.3+1
+  exif: ^3.3.0
+
+  # 위치, 주소
+  geocoding: ^3.0.0
+  geolocator: ^12.0.0
+  permission_handler: ^11.0.1
+  location: ^8.0.0
+
+  # JSON, 기타
+  intl: ^0.19.0
+  uuid: ^4.4.0
   geojson: ^1.0.0
-  uuid: ^4.3.3
-  cloud_firestore: ^5.6.8
+  share_plus: ^7.2.1
+  
+
+  # Firebase (FlutterFire 권장 버전 반영)
   firebase_core: ^3.13.1
+  cloud_firestore: ^5.6.8
   firebase_storage: ^12.4.6
+  firebase_auth: ^5.5.4
+  google_sign_in: ^6.3.0
+  flutter_exif_rotation: ^0.5.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
 
   assets:
+  # - assets/geo/korea_provinces.geojson
+    - assets/geo/korea_sigungu.geojson
+    - assets/geo/korea_sido.geojson
+    - assets/geo/busan.geojson
+    - assets/geo/chungbuk.geojson
+    - assets/geo/chungnam.geojson
+    - assets/geo/daegu.geojson
+    - assets/geo/daejeon.geojson
+    - assets/geo/gangwon.geojson
+    - assets/geo/gwangju.geojson
+    - assets/geo/gyeongbuk.geojson
+    - assets/geo/gyeonggi.geojson
+    - assets/geo/gyeongnam.geojson
+    - assets/geo/incheon.geojson
+    - assets/geo/jeju.geojson
+    - assets/geo/jeonbuk.geojson
+    - assets/geo/jeonnam.geojson
+    - assets/geo/jeonnam_only.geojson
+    - assets/geo/sejong.geojson
+    - assets/geo/seoul.geojson
+    - assets/geo/ulsan.geojson
     - assets/map_style.json
-    - assets/geo/강원도.geojson
-    - assets/geo/경기도.geojson
-    - assets/geo/경상남도.geojson
-    - assets/geo/경상북도.geojson
-    - assets/geo/광주광역시.geojson
-    - assets/geo/대구광역시.geojson
-    - assets/geo/대전광역시.geojson
-    - assets/geo/부산광역시.geojson
-    - assets/geo/서울특별시.geojson
-    - assets/geo/세종특별자치시.geojson
-    - assets/geo/울산광역시.geojson
-    - assets/geo/인천광역시.geojson
-    - assets/geo/전라남도.geojson
-    - assets/geo/전라북도.geojson
-    - assets/geo/제주특별자치도.geojson
-    - assets/geo/충청남도.geojson
-    - assets/geo/충청북도.geojson
+
+
+
+    - assets/map_style.json
