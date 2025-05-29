@@ -52,29 +52,7 @@ flutter:
   uses-material-design: true
 
   assets:
-  # - assets/geo/korea_provinces.geojson
-    - assets/geo/korea_sigungu.geojson
-    - assets/geo/korea_sido.geojson
-    - assets/geo/busan.geojson
-    - assets/geo/chungbuk.geojson
-    - assets/geo/chungnam.geojson
-    - assets/geo/daegu.geojson
-    - assets/geo/daejeon.geojson
-    - assets/geo/gangwon.geojson
-    - assets/geo/gwangju.geojson
-    - assets/geo/gyeongbuk.geojson
-    - assets/geo/gyeonggi.geojson
-    - assets/geo/gyeongnam.geojson
-    - assets/geo/incheon.geojson
-    - assets/geo/jeju.geojson
-    - assets/geo/jeonbuk.geojson
-    - assets/geo/jeonnam.geojson
-    - assets/geo/jeonnam_only.geojson
-    - assets/geo/sejong.geojson
-    - assets/geo/seoul.geojson
-    - assets/geo/ulsan.geojson
+    - assets/geo/HangJeongDong_ver20250401.geojson
     - assets/map_style.json
-
-
-
-    - assets/map_style.json
+    - assets/geo/skorea_municipalities_2018_geo.json
+    - assets/geo/skorea_provinces_2018_geo.json

@@ -1,11 +1,10 @@
-// 전체 시도 클릭 → 시군구 확대 지원 + '전체 보기' 버튼 추가
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({Key? key}) : super(key: key);
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -13,47 +12,53 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _mapController;
-  LatLng _initialPosition = const LatLng(36.5, 127.8); // 전국 중심
+  final LatLng _initialPosition = const LatLng(36.5, 127.8);
   Set<Polygon> _polygons = {};
   Map<String, dynamic> _sidoGeoJson = {};
-  Map<String, dynamic> _sigunguGeoJson = {};
   bool _isLoading = true;
   String? _selectedSido;
-  bool _showAllSido = false;
 
-  final List<String> majorSido = [
-    '서울특별시',
-    '부산광역시',
-    '대구광역시',
-    '인천광역시',
-    '광주광역시',
-    '대전광역시',
-    '울산광역시',
-    '세종특별자치시',
-    '제주특별자치도',
-  ];
+  final Map<String, String> sidoCodeMap = {
+    "서울특별시": "11",
+    "부산광역시": "26",
+    "대구광역시": "27",
+    "인천광역시": "28",
+    "광주광역시": "29",
+    "대전광역시": "30",
+    "울산광역시": "31",
+    "세종특별자치시": "36",
+    "경기도": "41",
+    "강원도": "42",
+    "충청북도": "43",
+    "충청남도": "44",
+    "전라북도": "45",
+    "전라남도": "46",
+    "경상북도": "47",
+    "경상남도": "48",
+    "제주특별자치도": "50",
+  };
 
   @override
   void initState() {
     super.initState();
-    _loadGeoJson();
+    _loadSidoGeoJson();
   }
 
-  Future<void> _loadGeoJson() async {
+  Future<void> _loadSidoGeoJson() async {
     try {
       final sidoData = await rootBundle.loadString(
-        'assets/geo/korea_sido.geojson',
+        'assets/geo/skorea_provinces_2018_geo.json',
       );
-      final sigunguData = await rootBundle.loadString(
-        'assets/geo/korea_sigungu.geojson',
-      );
-
-      _sidoGeoJson = json.decode(sidoData);
-      _sigunguGeoJson = json.decode(sigunguData);
-
+      setState(() {
+        _sidoGeoJson = json.decode(sidoData);
+        _isLoading = false;
+      });
       _drawSidoPolygons();
     } catch (e) {
-      print('GeoJSON 로드 오류: \$e');
+      print('GeoJSON 로드 오류: $e');
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -62,74 +67,68 @@ class _MapScreenState extends State<MapScreen> {
     Set<Polygon> polygons = {};
     int id = 0;
 
-    for (var feature in features) {
+    for (var feature in features.reversed) {
       final props = feature['properties'];
-      final name = props['CTP_KOR_NM'] ?? props['adm_nm'];
-      if (!_showAllSido && !majorSido.contains(name)) continue;
-
+      final sido = props['name'] ?? '이름없음';
       final geometry = feature['geometry'];
       final type = geometry['type'];
 
-      List<List> allCoords = [];
-      if (geometry['type'] == 'MultiPolygon') {
-        final coords = geometry['coordinates'] as List;
-        for (var polygon in coords) {
-          if (polygon is List) {
-            allCoords.addAll(polygon.cast<List>());
+      if (type == 'MultiPolygon') {
+        for (var polygon in geometry['coordinates']) {
+          for (var ring in polygon) {
+            final points = _convertToLatLng(ring);
+            polygons.add(_buildPolygon(id++, points, sido));
           }
         }
-      } else if (geometry['type'] == 'Polygon') {
-        allCoords = (geometry['coordinates'] as List).cast<List>();
-      }
-
-      for (var ring in allCoords) {
-        final points =
-            (ring as List)
-                .map<LatLng>((c) => LatLng(c[1].toDouble(), c[0].toDouble()))
-                .toList();
-        polygons.add(_buildPolygon(id++, points, name));
+      } else if (type == 'Polygon') {
+        for (var ring in geometry['coordinates']) {
+          final points = _convertToLatLng(ring);
+          polygons.add(_buildPolygon(id++, points, sido));
+        }
       }
     }
 
     setState(() {
       _polygons = polygons;
-      _isLoading = false;
-      _selectedSido = null;
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(_initialPosition, 7),
+      );
     });
   }
 
-  void _drawSigunguPolygons(String sidoName) {
-    final features = _sigunguGeoJson['features'] as List;
+  Future<void> _drawSigunguPolygons(String sidoName) async {
+    final sidoPrefix = sidoCodeMap[sidoName];
+    if (sidoPrefix == null) return;
+
+    final data = await rootBundle.loadString(
+      'assets/geo/skorea_municipalities_2018_geo.json',
+    );
+    final geoJson = json.decode(data);
+    final features = geoJson['features'] as List;
     Set<Polygon> polygons = {};
     int id = 0;
 
     for (var feature in features) {
       final props = feature['properties'];
-      final name = props['SIG_KOR_NM'] ?? props['adm_nm'];
-      final upper = props['CTP_KOR_NM'] ?? props['upper_nm'];
-      if (upper != sidoName) continue;
+      final code = props['code'].toString();
+      final name = props['name'] ?? '이름없음';
+      if (!code.startsWith(sidoPrefix)) continue;
 
       final geometry = feature['geometry'];
       final type = geometry['type'];
 
-      List<List> allCoords = [];
-      if (type == 'MultiPolygon') {
-        final coordsList = geometry['coordinates'] as List;
-        for (var polygon in coordsList) {
-          if (polygon is List) {
-            allCoords.addAll(polygon.cast<List>());
+      if (type == 'Polygon') {
+        for (var ring in geometry['coordinates']) {
+          final points = _convertToLatLng(ring);
+          polygons.add(_buildPolygon(id++, points, name));
+        }
+      } else if (type == 'MultiPolygon') {
+        for (var polygon in geometry['coordinates']) {
+          for (var ring in polygon) {
+            final points = _convertToLatLng(ring);
+            polygons.add(_buildPolygon(id++, points, name));
           }
         }
-      } else if (type == 'Polygon') {
-        allCoords = (geometry['coordinates'] as List).cast<List>();
-      }
-
-      for (var ring in allCoords) {
-        final points =
-            (ring as List)
-                .map<LatLng>((c) => LatLng(c[1].toDouble(), c[0].toDouble()))
-                .toList();
-        polygons.add(_buildPolygon(id++, points, name));
       }
     }
 
@@ -138,104 +137,77 @@ class _MapScreenState extends State<MapScreen> {
       _selectedSido = sidoName;
     });
 
-    _mapController?.animateCamera(CameraUpdate.zoomTo(10));
+    print("세부 행정구역 로딩 완료: $sidoName");
+  }
+
+  List<LatLng> _convertToLatLng(List coords) {
+    return coords.map<LatLng>((c) {
+      final lat = c[1].toDouble();
+      final lng = c[0].toDouble();
+      return LatLng(lat, lng);
+    }).toList();
   }
 
   Polygon _buildPolygon(int id, List<LatLng> points, String name) {
     return Polygon(
-      polygonId: PolygonId('poly_\$id'),
+      polygonId: PolygonId(id.toString()),
+
       points: points,
-      strokeColor: Colors.black,
       strokeWidth: 1,
+      strokeColor: Colors.black,
       fillColor: Colors.transparent,
       consumeTapEvents: true,
       onTap: () {
-        print('Tapped: \$name');
+        print("클릭한 지역: $name");
         if (_selectedSido == null) {
           _drawSigunguPolygons(name);
+        } else {
+          setState(() {
+            _selectedSido = null;
+          });
+          _drawSidoPolygons();
         }
       },
     );
   }
 
-  void _zoomIn() => _mapController?.animateCamera(CameraUpdate.zoomIn());
-  void _zoomOut() => _mapController?.animateCamera(CameraUpdate.zoomOut());
-
-  Future<bool> _onWillPop() async {
-    if (_selectedSido != null) {
-      _drawSidoPolygons();
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(_initialPosition, 7),
-      );
-      return false;
-    }
-    return true;
+  void _onMapCreated(GoogleMapController controller) async {
+    _mapController = controller;
+    final style = await rootBundle.loadString('assets/map_style.json');
+    _mapController?.setMapStyle(style);
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(_selectedSido ?? '내 여행지도'),
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-          elevation: 0,
-          actions: [
-            if (!_showAllSido && _selectedSido == null)
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _showAllSido = true;
-                  });
-                  _drawSidoPolygons();
-                },
-                child: const Text('전체 시도 보기'),
-              ),
-          ],
-        ),
-        body: Stack(
-          children: [
-            GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: _initialPosition,
-                zoom: 7,
-              ),
-              polygons: _polygons,
-              onMapCreated: (controller) async {
-                _mapController = controller;
-                final style = await rootBundle.loadString(
-                  'assets/map_style.json',
-                );
-                _mapController?.setMapStyle(style);
-              },
-            ),
-            if (_isLoading) const Center(child: CircularProgressIndicator()),
-            Positioned(
-              right: 16,
-              bottom: 80,
-              child: Column(
-                children: [
-                  FloatingActionButton(
-                    heroTag: 'zoomIn',
-                    mini: true,
-                    onPressed: _zoomIn,
-                    child: const Icon(Icons.add),
-                  ),
-                  const SizedBox(height: 8),
-                  FloatingActionButton(
-                    heroTag: 'zoomOut',
-                    mini: true,
-                    onPressed: _zoomOut,
-                    child: const Icon(Icons.remove),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_selectedSido ?? '지도'),
+        leading:
+            _selectedSido != null
+                ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    setState(() {
+                      _selectedSido = null;
+                    });
+                    _drawSidoPolygons();
+                  },
+                )
+                : null,
       ),
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : GoogleMap(
+                onMapCreated: _onMapCreated,
+                initialCameraPosition: CameraPosition(
+                  target: _initialPosition,
+                  zoom: 7,
+                ),
+                polygons: _polygons,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+              ),
     );
   }
 }
