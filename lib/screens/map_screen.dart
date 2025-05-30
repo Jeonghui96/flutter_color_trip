@@ -17,25 +17,26 @@ class _MapScreenState extends State<MapScreen> {
   Map<String, dynamic> _sidoGeoJson = {};
   bool _isLoading = true;
   String? _selectedSido;
+  double _currentZoom = 7.0;
 
   final Map<String, String> sidoCodeMap = {
     "서울특별시": "11",
-    "부산광역시": "26",
-    "대구광역시": "27",
-    "인천광역시": "28",
-    "광주광역시": "29",
-    "대전광역시": "30",
-    "울산광역시": "31",
-    "세종특별자치시": "36",
-    "경기도": "41",
-    "강원도": "42",
-    "충청북도": "43",
-    "충청남도": "44",
-    "전라북도": "45",
-    "전라남도": "46",
-    "경상북도": "47",
-    "경상남도": "48",
-    "제주특별자치도": "50",
+    "부산광역시": "21",
+    "대구광역시": "22",
+    "인천광역시": "23",
+    "광주광역시": "24",
+    "대전광역시": "25",
+    "울산광역시": "26",
+    "세종특별자치시": "29",
+    "경기도": "31",
+    "강원도": "32",
+    "충청북도": "33",
+    "충청남도": "34",
+    "전라북도": "35",
+    "전라남도": "36",
+    "경상북도": "37",
+    "경상남도": "38",
+    "제주특별자치도": "39",
   };
 
   @override
@@ -91,7 +92,7 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       _polygons = polygons;
       _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(_initialPosition, 7),
+        CameraUpdate.newLatLngZoom(_initialPosition, _currentZoom),
       );
     });
   }
@@ -107,6 +108,7 @@ class _MapScreenState extends State<MapScreen> {
     final features = geoJson['features'] as List;
     Set<Polygon> polygons = {};
     int id = 0;
+    List<LatLng> allPoints = [];
 
     for (var feature in features) {
       final props = feature['properties'];
@@ -121,12 +123,14 @@ class _MapScreenState extends State<MapScreen> {
         for (var ring in geometry['coordinates']) {
           final points = _convertToLatLng(ring);
           polygons.add(_buildPolygon(id++, points, name));
+          allPoints.addAll(points);
         }
       } else if (type == 'MultiPolygon') {
         for (var polygon in geometry['coordinates']) {
           for (var ring in polygon) {
             final points = _convertToLatLng(ring);
             polygons.add(_buildPolygon(id++, points, name));
+            allPoints.addAll(points);
           }
         }
       }
@@ -137,7 +141,26 @@ class _MapScreenState extends State<MapScreen> {
       _selectedSido = sidoName;
     });
 
+    if (allPoints.isNotEmpty) {
+      final bounds = _getLatLngBounds(allPoints);
+      _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
+    }
+
     print("세부 행정구역 로딩 완료: $sidoName");
+  }
+
+  LatLngBounds _getLatLngBounds(List<LatLng> points) {
+    double? minLat, maxLat, minLng, maxLng;
+    for (var p in points) {
+      if (minLat == null || p.latitude < minLat) minLat = p.latitude;
+      if (maxLat == null || p.latitude > maxLat) maxLat = p.latitude;
+      if (minLng == null || p.longitude < minLng) minLng = p.longitude;
+      if (maxLng == null || p.longitude > maxLng) maxLng = p.longitude;
+    }
+    return LatLngBounds(
+      southwest: LatLng(minLat!, minLng!),
+      northeast: LatLng(maxLat!, maxLng!),
+    );
   }
 
   List<LatLng> _convertToLatLng(List coords) {
@@ -151,7 +174,6 @@ class _MapScreenState extends State<MapScreen> {
   Polygon _buildPolygon(int id, List<LatLng> points, String name) {
     return Polygon(
       polygonId: PolygonId(id.toString()),
-
       points: points,
       strokeWidth: 1,
       strokeColor: Colors.black,
@@ -177,37 +199,70 @@ class _MapScreenState extends State<MapScreen> {
     _mapController?.setMapStyle(style);
   }
 
+  void _zoomIn() {
+    _currentZoom += 1;
+    _mapController?.animateCamera(CameraUpdate.zoomTo(_currentZoom));
+  }
+
+  void _zoomOut() {
+    _currentZoom -= 1;
+    _mapController?.animateCamera(CameraUpdate.zoomTo(_currentZoom));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_selectedSido ?? '지도'),
-        leading:
-            _selectedSido != null
-                ? IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () {
-                    setState(() {
-                      _selectedSido = null;
-                    });
-                    _drawSidoPolygons();
-                  },
-                )
-                : null,
+        leading: _selectedSido != null
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  setState(() {
+                    _selectedSido = null;
+                  });
+                  _drawSidoPolygons();
+                },
+              )
+            : null,
       ),
-      body:
+      body: Stack(
+        children: [
           _isLoading
               ? const Center(child: CircularProgressIndicator())
               : GoogleMap(
-                onMapCreated: _onMapCreated,
-                initialCameraPosition: CameraPosition(
-                  target: _initialPosition,
-                  zoom: 7,
+                  onMapCreated: _onMapCreated,
+                  initialCameraPosition: CameraPosition(
+                    target: _initialPosition,
+                    zoom: _currentZoom,
+                  ),
+                  polygons: _polygons,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
                 ),
-                polygons: _polygons,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-              ),
+          Positioned(
+            bottom: 30,
+            right: 15,
+            child: Column(
+              children: [
+                FloatingActionButton(
+                  heroTag: "zoom_in",
+                  mini: true,
+                  onPressed: _zoomIn,
+                  child: const Icon(Icons.add),
+                ),
+                const SizedBox(height: 10),
+                FloatingActionButton(
+                  heroTag: "zoom_out",
+                  mini: true,
+                  onPressed: _zoomOut,
+                  child: const Icon(Icons.remove),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
