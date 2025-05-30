@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
 import 'package:flutter_exif_rotation/flutter_exif_rotation.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class UploadScreen extends StatefulWidget {
   final String uid;
@@ -54,6 +55,19 @@ class _UploadScreenState extends State<UploadScreen> {
     return palette.colors.take(5).toList();
   }
 
+  Future<GeoPoint?> _getLatLngFromAddress(String country, String city, String place) async {
+    try {
+      final address = '$country $city $place';
+      final locations = await locationFromAddress(address);
+      if (locations.isEmpty) return null;
+      final location = locations.first;
+      return GeoPoint(location.latitude, location.longitude);
+    } catch (e) {
+      debugPrint('주소 좌표 변환 실패: $e');
+      return null;
+    }
+  }
+
   Future<void> _upload() async {
     if (_image == null ||
         _countryController.text.isEmpty ||
@@ -61,6 +75,12 @@ class _UploadScreenState extends State<UploadScreen> {
         _placeController.text.isEmpty) return;
 
     setState(() => _isLoading = true);
+
+    final geoPoint = await _getLatLngFromAddress(
+      _countryController.text,
+      _cityController.text,
+      _placeController.text,
+    );
 
     final fileName = path.basename(_image!.path);
     final ref = FirebaseStorage.instance.ref().child('uploads/${widget.uid}/$fileName');
@@ -82,6 +102,7 @@ class _UploadScreenState extends State<UploadScreen> {
       'color': _selectedColor?.value,
       'timestamp': Timestamp.now(),
       if (widget.groupId != null) 'groupId': widget.groupId,
+      if (geoPoint != null) 'location': geoPoint,
     });
 
     setState(() => _isLoading = false);
@@ -118,18 +139,19 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 
- String getColorName(Color color) {
-  int r = color.red, g = color.green, b = color.blue;
-  if (r > 180 && g < 100 && b < 100) return '빨간색';
-  if (r > 200 && g > 180 && b < 100) return '주황색';
-  if (r > 200 && g > 200 && b < 100) return '노란색';
-  if (r < 100 && g > 180 && b < 100) return '초록색';
-  if (r < 120 && g < 120 && b > 180) return '파란색';
-  if (r > 150 && b > 150 && g < 100) return '자주색';
-  if (r > 230 && g > 230 && b > 230) return '흰색';
-  if (r < 60 && g < 60 && b < 60) return '검정색';
-  return '기타';
-}
+  String getColorName(Color color) {
+    int r = color.red, g = color.green, b = color.blue;
+    if (r > 180 && g < 100 && b < 100) return '빨간색';
+    if (r > 200 && g > 180 && b < 100) return '주황색';
+    if (r > 200 && g > 200 && b < 100) return '노란색';
+    if (r < 100 && g > 180 && b < 100) return '초록색';
+    if (r < 120 && g < 120 && b > 180) return '파란색';
+    if (r > 150 && b > 150 && g < 100) return '자주색';
+    if (r > 230 && g > 230 && b > 230) return '흰색';
+    if (r < 60 && g < 60 && b < 60) return '검정색';
+    return '기타';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

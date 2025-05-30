@@ -63,6 +63,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '257359194449',
     projectId: 'flutter-colortrip-36a9a',
     storageBucket: 'flutter-colortrip-36a9a.firebasestorage.app',
+    androidClientId: '257359194449-5mdgh182e2q8d7g5ndn9q2eh64n78kt7.apps.googleusercontent.com',
+    iosClientId: '257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu.apps.googleusercontent.com',
     iosBundleId: 'com.example.flutterColortripApp',
   );
+
 }

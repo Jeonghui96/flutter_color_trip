@@ -12,7 +12,20 @@
           "package_name": "com.example.flutter_colortrip_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "257359194449-5mdgh182e2q8d7g5ndn9q2eh64n78kt7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.flutter_colortrip_app",
+            "certificate_hash": "b43ecbdee559e7a830ed846fdbedbcaf2c4473ba"
+          }
+        },
+        {
+          "client_id": "257359194449-rg9kl8i27deim0icoh2ke1qbc48ntduj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB1CPrR8rqDrji-nSEt1kin5in0lJTU4oc"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "257359194449-rg9kl8i27deim0icoh2ke1qbc48ntduj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.flutterColortripApp"
+              }
+            }
+          ]
         }
       }
     }

@@ -54,7 +54,8 @@
 
 	<key>io.flutter.embedded_views_preview</key>
 	<true/>
-
+	<key>GIDClientID</key>
+	<string>257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu.apps.googleusercontent.com</string>
 	<!-- ✅ 추가: Google 로그인용 URL 스킴 -->
 	<key>CFBundleURLTypes</key>
 	<array>
@@ -64,7 +65,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<!-- 여기를 GoogleService-Info.plist 안의 REVERSED_CLIENT_ID 값으로 바꿔야 함 -->
-				<string>com.googleusercontent.apps.XXXXXXX</string>
+				<string>com.googleusercontent.apps.257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu</string>
 			</array>
 		</dict>
 	</array>
