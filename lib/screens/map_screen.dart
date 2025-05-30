@@ -17,7 +17,7 @@ class _MapScreenState extends State<MapScreen> {
   Map<String, dynamic> _sidoGeoJson = {};
   bool _isLoading = true;
   String? _selectedSido;
-  double _currentZoom = 7.0;
+  double _currentZoom = 6.8; // 초기 줌 값 수정
 
   final Map<String, String> sidoCodeMap = {
     "서울특별시": "11",
@@ -186,8 +186,12 @@ class _MapScreenState extends State<MapScreen> {
         } else {
           setState(() {
             _selectedSido = null;
+            _currentZoom = 6.8; // 되돌릴 때 줌 복원
           });
           _drawSidoPolygons();
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(_initialPosition, _currentZoom),
+          );
         }
       },
     );
@@ -220,8 +224,12 @@ class _MapScreenState extends State<MapScreen> {
                 onPressed: () {
                   setState(() {
                     _selectedSido = null;
+                    _currentZoom = 6.8; // 되돌릴 때 줌 복원
                   });
                   _drawSidoPolygons();
+                  _mapController?.animateCamera(
+                    CameraUpdate.newLatLngZoom(_initialPosition, _currentZoom),
+                  );
                 },
               )
             : null,
