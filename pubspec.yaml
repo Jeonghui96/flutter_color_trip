@@ -56,3 +56,4 @@ flutter:
     - assets/map_style.json
     - assets/geo/skorea_municipalities_2018_geo.json
     - assets/geo/skorea_provinces_2018_geo.json
+    - assets/geo/sejong.geojson

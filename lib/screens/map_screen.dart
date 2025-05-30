@@ -17,7 +17,7 @@ class _MapScreenState extends State<MapScreen> {
   Map<String, dynamic> _sidoGeoJson = {};
   bool _isLoading = true;
   String? _selectedSido;
-  double _currentZoom = 6.8; // 초기 줌 값 수정
+  double _currentZoom = 6.8;
 
   final Map<String, String> sidoCodeMap = {
     "서울특별시": "11",
@@ -98,6 +98,53 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _drawSigunguPolygons(String sidoName) async {
+    Set<Polygon> polygons = {};
+    int id = 0;
+    List<LatLng> allPoints = [];
+
+    // 세종시 처리: 별도 파일 로드
+    if (sidoName == "세종특별자치시") {
+      final data = await rootBundle.loadString('assets/geo/sejong.geojson');
+      final geoJson = json.decode(data);
+      final features = geoJson['features'] as List;
+
+      for (var feature in features) {
+        final props = feature['properties'];
+        final name = props['name'] ?? '이름없음';
+        final geometry = feature['geometry'];
+        final type = geometry['type'];
+
+        if (type == 'Polygon') {
+          for (var ring in geometry['coordinates']) {
+            final points = _convertToLatLng(ring);
+            polygons.add(_buildPolygon(id++, points, name));
+            allPoints.addAll(points);
+          }
+        } else if (type == 'MultiPolygon') {
+          for (var polygon in geometry['coordinates']) {
+            for (var ring in polygon) {
+              final points = _convertToLatLng(ring);
+              polygons.add(_buildPolygon(id++, points, name));
+              allPoints.addAll(points);
+            }
+          }
+        }
+      }
+
+      setState(() {
+        _polygons = polygons;
+        _selectedSido = sidoName;
+      });
+
+      if (allPoints.isNotEmpty) {
+        final bounds = _getLatLngBounds(allPoints);
+        _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
+      }
+      print("세종 상세지도 로딩 완료");
+      return;
+    }
+
+    // 일반 시도 처리
     final sidoPrefix = sidoCodeMap[sidoName];
     if (sidoPrefix == null) return;
 
@@ -106,9 +153,6 @@ class _MapScreenState extends State<MapScreen> {
     );
     final geoJson = json.decode(data);
     final features = geoJson['features'] as List;
-    Set<Polygon> polygons = {};
-    int id = 0;
-    List<LatLng> allPoints = [];
 
     for (var feature in features) {
       final props = feature['properties'];
@@ -182,17 +226,9 @@ class _MapScreenState extends State<MapScreen> {
       onTap: () {
         print("클릭한 지역: $name");
         if (_selectedSido == null) {
-          _drawSigunguPolygons(name);
-        } else {
-          setState(() {
-            _selectedSido = null;
-            _currentZoom = 6.8; // 되돌릴 때 줌 복원
-          });
-          _drawSidoPolygons();
-          _mapController?.animateCamera(
-            CameraUpdate.newLatLngZoom(_initialPosition, _currentZoom),
-          );
+          _drawSigunguPolygons(name); // 전체 → 상세 전환만 허용
         }
+        // 상세 상태에서는 터치해도 아무 작업 안 함
       },
     );
   }
@@ -218,36 +254,40 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_selectedSido ?? '지도'),
-        leading: _selectedSido != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  setState(() {
-                    _selectedSido = null;
-                    _currentZoom = 6.8; // 되돌릴 때 줌 복원
-                  });
-                  _drawSidoPolygons();
-                  _mapController?.animateCamera(
-                    CameraUpdate.newLatLngZoom(_initialPosition, _currentZoom),
-                  );
-                },
-              )
-            : null,
+        leading:
+            _selectedSido != null
+                ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    setState(() {
+                      _selectedSido = null;
+                      _currentZoom = 6.8;
+                    });
+                    _drawSidoPolygons();
+                    _mapController?.animateCamera(
+                      CameraUpdate.newLatLngZoom(
+                        _initialPosition,
+                        _currentZoom,
+                      ),
+                    );
+                  },
+                )
+                : null,
       ),
       body: Stack(
         children: [
           _isLoading
               ? const Center(child: CircularProgressIndicator())
               : GoogleMap(
-                  onMapCreated: _onMapCreated,
-                  initialCameraPosition: CameraPosition(
-                    target: _initialPosition,
-                    zoom: _currentZoom,
-                  ),
-                  polygons: _polygons,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
+                onMapCreated: _onMapCreated,
+                initialCameraPosition: CameraPosition(
+                  target: _initialPosition,
+                  zoom: _currentZoom,
                 ),
+                polygons: _polygons,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+              ),
           Positioned(
             bottom: 30,
             right: 15,
