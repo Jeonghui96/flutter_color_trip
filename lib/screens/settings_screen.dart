@@ -1,3 +1,4 @@
+// 전체 수정됨 - '내가 업로드한 여행 보기' 화면으로 이동하도록 변경
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'my_trips_screen.dart'; // ✅ 추가된 import
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -146,17 +148,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showMyTripsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('내 여행 기록'),
-        content: const Text('이곳에 사용자가 업로드한 여행 기록 목록이 표시될 예정입니다.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기'))],
-      ),
-    );
-  }
-
   Future<void> _signInWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
@@ -276,7 +267,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.map),
             title: const Text('내가 업로드한 여행 보기', style: TextStyle(color: Colors.black)),
-            onTap: () => _showMyTripsDialog(context),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const MyTripsScreen()),
+              );
+            },
             trailing: const Icon(Icons.chevron_right),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
