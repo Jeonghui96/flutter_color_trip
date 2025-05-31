@@ -18,7 +18,7 @@ class _MapScreenState extends State<MapScreen> {
   final LatLng _initialPosition = const LatLng(36.5, 127.8); // 대한민국 중심
   Set<Polygon> _polygons = {};
   Map<String, dynamic> _sidoGeoJson = {}; // 시도 GeoJSON 데이터
-  bool _isLoading = true;
+  bool _isLoading = true; // 초기 로딩 상태는 true
   String? _selectedSido; // 현재 상세 지도로 보고 있는 시도 이름 (null이면 전국 시도 지도)
   double _currentZoom = 6.8;
 
@@ -50,10 +50,41 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAllSigunguCounts(); // 앱 시작 시 모든 시군구/읍면동 개수 미리 로드
-    _loadSidoGeoJson();     // 초기 지도 그리기 (시도GeoJSON 로드)
-    _loadTripData();        // 여행 기록 데이터 로드 및 색상 매핑
+    // 모든 초기 데이터 로딩을 단일 비동기 함수로 묶어 관리
+    _initializeMapData();
   }
+
+  /// 모든 필요한 데이터(GeoJSON, 여행 기록)를 로드하고 초기 지도를 그립니다.
+  /// 이 함수는 `initState`에서 한 번만 호출되며, 모든 데이터 로딩이 완료될 때까지
+  /// 로딩 인디케이터를 표시합니다.
+  Future<void> _initializeMapData() async {
+    setState(() {
+      _isLoading = true; // 로딩 시작
+    });
+    try {
+      // 모든 시군구/읍면동 개수 미리 로드 (필수)
+      await _loadAllSigunguCounts();
+      // 시도 GeoJSON 데이터 로드 (필수)
+      await _loadSidoGeoJson();
+      // 사용자 여행 기록 데이터 로드 (필수)
+      await _loadTripData();
+
+      // 모든 데이터 로딩이 완료된 후, 초기 지도 그리기
+      if (_selectedSido == null) {
+        _drawSidoPolygons(); // 전국 시도 지도를 그립니다.
+      } else {
+        _drawSigunguPolygons(_selectedSido!); // 특정 시도 상세 지도를 그립니다.
+      }
+    } catch (e) {
+      print("지도 데이터 초기화 중 오류 발생: $e");
+      // 필요하다면 사용자에게 오류 메시지를 보여주는 로직 추가
+    } finally {
+      setState(() {
+        _isLoading = false; // 로딩 완료
+      });
+    }
+  }
+
 
   // 모든 시군구/읍면동의 총 개수를 미리 로드하여 통계에 사용
   // 이 함수는 skorea_municipalities_2018_geo.json과 sejong.geojson을 모두 파싱합니다.
@@ -163,13 +194,13 @@ class _MapScreenState extends State<MapScreen> {
         _currentViewTotalSigunguCount = _totalNationalSigunguCount; // 초기에는 전국 총 시군구/읍면동 수로 설정
       });
       
-      // 데이터 로드 후, 현재 선택된 지도 모드에 따라 다시 그립니다.
-      if (_selectedSido == null) {
-        _drawSidoPolygons(); // 전국 시도 지도를 그립니다.
-      } else {
-        // 특정 시도 상세 지도 상태에서 데이터가 로드/업데이트되면 해당 시도를 다시 그립니다.
-        _drawSigunguPolygons(_selectedSido!);
-      }
+      // 이 부분에서 _drawSidoPolygons 또는 _drawSigunguPolygons 호출은
+      // _initializeMapData()에서 일괄 처리되므로 여기서는 제거합니다.
+      // if (_selectedSido == null) {
+      //   _drawSidoPolygons();
+      // } else {
+      //   _drawSigunguPolygons(_selectedSido!);
+      // }
 
     } catch (e) {
       print('여행 기록 로드 오류: $e');
@@ -199,25 +230,27 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // 시도 GeoJSON 파일을 로드합니다.
+  // 이 함수는 단순히 데이터를 로드하고 _sidoGeoJson에 할당만 하며,
+  // setState나 _isLoading 상태 변경은 _initializeMapData에서 담당합니다.
   Future<void> _loadSidoGeoJson() async {
     try {
       final sidoData = await rootBundle.loadString(
         'assets/geo/skorea_provinces_2018_geo.json',
       );
-      setState(() {
-        _sidoGeoJson = json.decode(sidoData);
-        _isLoading = false;
-      });
+      _sidoGeoJson = json.decode(sidoData);
     } catch (e) {
       print('시도 GeoJSON 로드 오류: $e');
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
   // 전국 시도 폴리곤을 그립니다.
   void _drawSidoPolygons() {
+    // GeoJSON 데이터가 로드되었는지 확인
+    if (_sidoGeoJson.isEmpty || _sidoGeoJson['features'] == null) {
+      print("Error: 시도 GeoJSON 데이터가 로드되지 않았거나 유효하지 않습니다.");
+      return;
+    }
+
     final features = _sidoGeoJson['features'] as List;
     Set<Polygon> polygons = {};
     int id = 0;
@@ -433,6 +466,9 @@ class _MapScreenState extends State<MapScreen> {
       consumeTapEvents: true,
       onTap: () {
         print("클릭한 지역: $name");
+        // 이 부분에서 기존에 _userTripColors에 여러 색상이 있을 때
+        // 색상 선택 다이얼로그를 띄우는 로직이 있었으나 제거되었습니다.
+        // 만약 이 기능이 필요하다면 다시 추가해야 합니다.
         if (_selectedSido == null) {
           // 시도 단계에서만 시군구 상세 지도로 전환
           _drawSigunguPolygons(name);
@@ -482,6 +518,7 @@ class _MapScreenState extends State<MapScreen> {
                   setState(() {
                     _selectedSido = null; // 시도 선택 초기화
                     _currentZoom = 6.8; // 시도 맵으로 돌아갈 때 초기 줌 레벨로 설정
+                    // _temporarySelectedRegionColor.clear(); // 임시 색상 맵이 없으므로 주석 처리
                   });
                   _drawSidoPolygons(); // 시도 지도로 돌아감
                   _mapController?.animateCamera(
