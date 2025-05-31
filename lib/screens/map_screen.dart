@@ -2,11 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Firebase Firestore import
-import 'package:geocoding/geocoding.dart'; // 역지오코딩을 위해 필요합니다.
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MapScreen extends StatefulWidget {
-  final String uid; // 사용자 UID를 받아와야 합니다.
+  final String uid; // 사용자 UID를 받아야 합니다.
   const MapScreen({Key? key, required this.uid}) : super(key: key);
 
   @override
@@ -15,42 +15,100 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _mapController;
-  final LatLng _initialPosition = const LatLng(36.5, 127.8);
+  final LatLng _initialPosition = const LatLng(36.5, 127.8); // 대한민국 중심
   Set<Polygon> _polygons = {};
-  Map<String, dynamic> _sidoGeoJson = {};
+  Map<String, dynamic> _sidoGeoJson = {}; // 시도 GeoJSON 데이터
   bool _isLoading = true;
-  String? _selectedSido;
+  String? _selectedSido; // 현재 상세 지도로 보고 있는 시도 이름 (null이면 전국 시도 지도)
   double _currentZoom = 6.8;
 
   // 지역별 사용자 여행 기록 색상 저장 (key: 지역 이름, value: Color 리스트)
+  // key는 시도 이름 ("서울특별시") 또는 시군구/읍면동 이름 ("동구", "수원시", "세종특별자치시 세종시 연동면")
   Map<String, List<Color>> _userTripColors = {};
 
+  // 방문 통계 변수
+  int _visitedSidoCount = 0;
+  final int _totalSidoCount = 17; // 대한민국 시도 총 개수
+  int _visitedSigunguCount = 0; // 현재 뷰(전국 또는 특정 시도)의 방문 시군구/읍면동 수
+  int _currentViewTotalSigunguCount = 0; // 현재 뷰(전국 또는 특정 시도)의 총 시군구/읍면동 개수
+
+  // 시도 이름으로 코드 찾는 맵 (GeoJSON 시군구 필터링용)
   final Map<String, String> sidoCodeMap = {
-    "서울특별시": "11",
-    "부산광역시": "21",
-    "대구광역시": "22",
-    "인천광역시": "23",
-    "광주광역시": "24",
-    "대전광역시": "25",
-    "울산광역시": "26",
-    "세종특별자치시": "29",
-    "경기도": "31",
-    "강원도": "32",
-    "충청북도": "33",
-    "충청남도": "34",
-    "전라북도": "35",
-    "전라남도": "36",
-    "경상북도": "37",
-    "경상남도": "38",
-    "제주특별자치도": "39",
+    "서울특별시": "11", "부산광역시": "21", "대구광역시": "22", "인천광역시": "23", "광주광역시": "24",
+    "대전광역시": "25", "울산광역시": "26", "세종특별자치시": "29", "경기도": "31", "강원도": "32",
+    "충청북도": "33", "충청남도": "34", "전라북도": "35", "전라남도": "36", "경상북도": "37",
+    "경상남도": "38", "제주특별자치도": "39",
   };
+
+  // 모든 시군구/읍면동의 총 개수를 저장하는 맵 (시도별로)
+  // key: 시도 이름, value: 해당 시도의 총 시군구/읍면동 개수
+  Map<String, int> _allSigunguCountsBySido = {};
+  // 전국 총 시군구/읍면동 개수 (세종시의 읍면동 포함)
+  int _totalNationalSigunguCount = 0;
+
 
   @override
   void initState() {
     super.initState();
-    _loadSidoGeoJson(); // GeoJSON 로드 (초기 지도 그리기)
-    _loadTripData(); // 여행 기록 데이터 로드 및 색상 매핑
+    _loadAllSigunguCounts(); // 앱 시작 시 모든 시군구/읍면동 개수 미리 로드
+    _loadSidoGeoJson();     // 초기 지도 그리기 (시도GeoJSON 로드)
+    _loadTripData();        // 여행 기록 데이터 로드 및 색상 매핑
   }
+
+  // 모든 시군구/읍면동의 총 개수를 미리 로드하여 통계에 사용
+  // 이 함수는 skorea_municipalities_2018_geo.json과 sejong.geojson을 모두 파싱합니다.
+  Future<void> _loadAllSigunguCounts() async {
+    try {
+      Map<String, int> tempSidoTotalSigunguCounts = {};
+      int nationalTotal = 0;
+
+      // 1. 일반 시군구 GeoJSON 로드 (skorea_municipalities_2018_geo.json)
+      final sigunguData = await rootBundle.loadString('assets/geo/skorea_municipalities_2018_geo.json');
+      final sigunguGeoJson = json.decode(sigunguData);
+      final features = sigunguGeoJson['features'] as List;
+
+      for (var feature in features) {
+        final props = feature['properties'];
+        final code = props['code'].toString();
+        String currentSidoCode = code.substring(0, 2);
+        String? currentSidoName = sidoCodeMap.entries.firstWhere(
+          (entry) => entry.value == currentSidoCode,
+          orElse: () => const MapEntry("", "")
+        ).key;
+
+        if (currentSidoName.isNotEmpty) {
+          tempSidoTotalSigunguCounts[currentSidoName] = (tempSidoTotalSigunguCounts[currentSidoName] ?? 0) + 1;
+          nationalTotal++;
+        }
+      }
+
+      // 2. 세종특별자치시 GeoJSON 로드 (sejong.geojson)
+      // 세종시는 읍면동 단위로 분할되어 있다고 가정하고 처리합니다.
+      try {
+        final sejongData = await rootBundle.loadString('assets/geo/sejong.geojson');
+        final sejongGeoJson = json.decode(sejongData);
+        final sejongFeatures = sejongGeoJson['features'] as List;
+
+        tempSidoTotalSigunguCounts["세종특별자치시"] = (tempSidoTotalSigunguCounts["세종특별자치시"] ?? 0); // 초기화
+        for (var feature in sejongFeatures) {
+          // 세종시의 각 읍면동을 1개로 카운트
+          tempSidoTotalSigunguCounts["세종특별자치시"] = (tempSidoTotalSigunguCounts["세종특별자치시"] ?? 0) + 1;
+          nationalTotal++;
+        }
+      } catch (e) {
+        print("세종 GeoJSON 로드 중 오류 발생 (총 개수 계산용): $e");
+      }
+
+      setState(() {
+        _allSigunguCountsBySido = tempSidoTotalSigunguCounts;
+        _totalNationalSigunguCount = nationalTotal;
+      });
+      print("모든 시군구/읍면동 개수 로드 완료: $_allSigunguCountsBySido, 전국: $_totalNationalSigunguCount");
+    } catch (e) {
+      print("모든 시군구/읍면동 개수 로드 중 치명적 오류: $e");
+    }
+  }
+
 
   // Firebase에서 여행 기록 데이터를 로드하고 지역별 색상 맵을 채웁니다.
   Future<void> _loadTripData() async {
@@ -62,81 +120,62 @@ class _MapScreenState extends State<MapScreen> {
           .get();
 
       final Map<String, List<Color>> tempTripColors = {};
+      Set<String> visitedSidos = {};     // 방문한 시도 집합 (중복 제거용)
+      Set<String> visitedSigungus = {};  // 방문한 시군구/읍면동 집합 (중복 제거용, 전국 기준)
 
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
         final int? colorValue = data['color'];
-        final String? city = data['city']; // 예: "대구"
-        final GeoPoint? location = data['location']; // GeoPoint 활용이 더 정확함
+        final String? firebaseSido = data['city'];    // Firestore에 저장된 시도 이름 (예: "대구광역시", "세종특별자치시")
+        final String? firebaseSigungu = data['sigungu']; // Firestore에 저장된 시군구/읍면동 이름 (예: "동구", "수원시", "세종특별자치시 세종시 연동면")
 
-        if (colorValue != null && (city != null || location != null)) {
+        if (colorValue != null) {
           final Color tripColor = Color(colorValue);
 
-          String? standardizedRegionName;
-
-          // 1. GeoPoint가 있다면 역지오코딩을 통해 정확한 행정구역 이름을 얻습니다. (더 권장)
-          if (location != null) {
-            try {
-              List<Placemark> placemarks = await placemarkFromCoordinates(location.latitude, location.longitude);
-              if (placemarks.isNotEmpty) {
-                // placemarks.first.administrativeArea: 시/도 (예: "서울특별시", "부산광역시")
-                // placemarks.first.locality: 시/군/구 (예: "중구", "성남시")
-                // GeoJSON의 properties.name과 일치하는 필드를 사용해야 합니다.
-                // 초기 지도는 시도 단위이므로 administrativeArea를 우선 사용합니다.
-                standardizedRegionName = placemarks.first.administrativeArea;
-
-                // 시군구 상세 지도를 위한 대비 (필요하다면 locality/subLocality도 처리 가능)
-                // 현재 시도 지도를 칠하는 목적이므로 administrativeArea로 충분합니다.
-              }
-            } catch (e) {
-              debugPrint('역지오코딩 오류: $e');
-              // 역지오코딩 실패 시 city 이름으로 대체 시도
+          // 1. 시도 이름으로 색상 매핑 (전체 시도 지도에 색칠하기 위함)
+          if (firebaseSido != null && firebaseSido.isNotEmpty) {
+            if (!tempTripColors.containsKey(firebaseSido)) {
+              tempTripColors[firebaseSido] = [];
             }
+            tempTripColors[firebaseSido]!.add(tripColor);
+            visitedSidos.add(firebaseSido); // 방문한 시도 카운트를 위해 추가
           }
 
-          // 2. GeoPoint가 없거나 역지오코딩 실패 시, city 이름을 표준화하여 사용합니다.
-          if (standardizedRegionName == null && city != null) {
-            // Firestore의 'city' 필드값을 GeoJSON의 'name' 필드값과 일치시키기 위한 매핑
-            if (city == "서울") standardizedRegionName = "서울특별시";
-            else if (city == "부산") standardizedRegionName = "부산광역시";
-            else if (city == "대구") standardizedRegionName = "대구광역시";
-            else if (city == "인천") standardizedRegionName = "인천광역시";
-            else if (city == "광주") standardizedRegionName = "광주광역시";
-            else if (city == "대전") standardizedRegionName = "대전광역시";
-            else if (city == "울산") standardizedRegionName = "울산광역시";
-            else if (city == "세종") standardizedRegionName = "세종특별자치시"; // 세종은 '시'까지
-            else if (city == "경기") standardizedRegionName = "경기도";
-            else if (city == "강원") standardizedRegionName = "강원도";
-            else if (city == "충북") standardizedRegionName = "충청북도";
-            else if (city == "충남") standardizedRegionName = "충청남도";
-            else if (city == "전북") standardizedRegionName = "전라북도";
-            else if (city == "전남") standardizedRegionName = "전라남도";
-            else if (city == "경북") standardizedRegionName = "경상북도";
-            else if (city == "경남") standardizedRegionName = "경상남도";
-            else if (city == "제주") standardizedRegionName = "제주특별자치도"; // 제주도 '도'까지
-            else standardizedRegionName = city; // 매핑되지 않은 경우 원래 이름 사용 (주의: 이 경우 일치 안될 수 있음)
-          }
+          // 2. 시군구/읍면동 이름으로 색상 매핑 (세부 시군구 지도에 색칠하기 위함)
+          // `skorea_municipalities_2018_geo.json`의 `properties.name` (예: "동구", "수원시")
+          // `sejong.geojson`의 `properties.adm_nm` (예: "세종특별자치시 세종시 연동면")
+          if (firebaseSigungu != null && firebaseSigungu.isNotEmpty) {
+            String regionKey = firebaseSigungu; // Firestore의 시군구/읍면동 값을 그대로 사용
 
-          if (standardizedRegionName != null) {
-            if (!tempTripColors.containsKey(standardizedRegionName)) {
-              tempTripColors[standardizedRegionName!] = [];
+            if (!tempTripColors.containsKey(regionKey)) {
+              tempTripColors[regionKey] = [];
             }
-            tempTripColors[standardizedRegionName!]!.add(tripColor);
+            tempTripColors[regionKey]!.add(tripColor);
+            visitedSigungus.add(regionKey); // 방문한 시군구/읍면동 카운트를 위해 추가
           }
         }
       }
 
       setState(() {
         _userTripColors = tempTripColors;
-        print("로드된 여행 기록 색상 (표준화된 이름): $_userTripColors"); // 로그 확인
+        _visitedSidoCount = visitedSidos.length;
+        _visitedSigunguCount = visitedSigungus.length; // 전국 기준 방문 시군구/읍면동 수
+        _currentViewTotalSigunguCount = _totalNationalSigunguCount; // 초기에는 전국 총 시군구/읍면동 수로 설정
       });
-      // 데이터 로드 후 폴리곤을 다시 그려 색상을 적용합니다.
-      _drawSidoPolygons();
+      
+      // 데이터 로드 후, 현재 선택된 지도 모드에 따라 다시 그립니다.
+      if (_selectedSido == null) {
+        _drawSidoPolygons(); // 전국 시도 지도를 그립니다.
+      } else {
+        // 특정 시도 상세 지도 상태에서 데이터가 로드/업데이트되면 해당 시도를 다시 그립니다.
+        _drawSigunguPolygons(_selectedSido!);
+      }
 
     } catch (e) {
       print('여행 기록 로드 오류: $e');
     }
   }
+
 
   // 주어진 지역 이름에 해당하는 평균 색상을 계산합니다.
   Color _getColorForRegion(String regionName) {
@@ -149,7 +188,7 @@ class _MapScreenState extends State<MapScreen> {
         b += color.blue;
       }
       return Color.fromARGB(
-        255, // 투명도를 여기서 조절할 수 있습니다. (0-255)
+        255, // 불투명도 (0-255)
         (r / colors.length).round(),
         (g / colors.length).round(),
         (b / colors.length).round(),
@@ -159,6 +198,7 @@ class _MapScreenState extends State<MapScreen> {
     return Colors.grey.shade200;
   }
 
+  // 시도 GeoJSON 파일을 로드합니다.
   Future<void> _loadSidoGeoJson() async {
     try {
       final sidoData = await rootBundle.loadString(
@@ -168,21 +208,21 @@ class _MapScreenState extends State<MapScreen> {
         _sidoGeoJson = json.decode(sidoData);
         _isLoading = false;
       });
-      // _drawSidoPolygons(); // _loadTripData()에서 호출되므로 여기서 다시 호출할 필요 없음
     } catch (e) {
-      print('GeoJSON 로드 오류: $e');
+      print('시도 GeoJSON 로드 오류: $e');
       setState(() {
         _isLoading = false;
       });
     }
   }
 
+  // 전국 시도 폴리곤을 그립니다.
   void _drawSidoPolygons() {
     final features = _sidoGeoJson['features'] as List;
     Set<Polygon> polygons = {};
     int id = 0;
 
-    for (var feature in features.reversed) {
+    for (var feature in features.reversed) { // 순서를 뒤집어 그리면 작은 폴리곤이 큰 폴리곤 위에 그려질 수 있습니다.
       final props = feature['properties'];
       final sido = props['name'] ?? '이름없음'; // GeoJSON의 시도 이름
       final geometry = feature['geometry'];
@@ -194,21 +234,24 @@ class _MapScreenState extends State<MapScreen> {
         for (var polygon in geometry['coordinates']) {
           for (var ring in polygon) {
             final points = _convertToLatLng(ring);
-            polygons.add(_buildPolygon(id++, points, sido, fillColor)); // 색상 전달
+            polygons.add(_buildPolygon(id++, points, sido, fillColor));
           }
         }
       } else if (type == 'Polygon') {
         for (var ring in geometry['coordinates']) {
           final points = _convertToLatLng(ring);
-          polygons.add(_buildPolygon(id++, points, sido, fillColor)); // 색상 전달
+          polygons.add(_buildPolygon(id++, points, sido, fillColor));
         }
       }
     }
 
     setState(() {
       _polygons = polygons;
-      // 초기 로드 시에만 카메라 이동, 재로드 시에는 기존 줌 유지 (선택 사항)
-      if (_mapController != null && _selectedSido == null) {
+      _selectedSido = null; // 시도 지도 상태임을 명시
+      _currentViewTotalSigunguCount = _totalNationalSigunguCount; // 전국 시군구 통계로 업데이트
+      // _visitedSigunguCount는 _loadTripData에서 이미 계산된 전국 시군구 방문 수임.
+
+      if (_mapController != null) {
         _mapController?.animateCamera(
           CameraUpdate.newLatLngZoom(_initialPosition, _currentZoom),
         );
@@ -216,37 +259,54 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
+  // 특정 시도의 시군구/읍면동 폴리곤을 그립니다.
   Future<void> _drawSigunguPolygons(String sidoName) async {
     Set<Polygon> polygons = {};
     int id = 0;
     List<LatLng> allPoints = [];
 
-    // 세종시 처리: 별도 파일 로드
+    // 이 함수 내에서 해당 시도에 대한 방문 시군구/읍면동 수를 다시 계산합니다.
+    Set<String> visitedRegionsInSelectedSido = {}; // 방문한 지역 이름 (읍면동 또는 시군구)
+    int totalRegionsInSelectedSido = 0; // 해당 시도의 총 지역 수 (읍면동 또는 시군구)
+
+
+    // 세종시 처리: 별도 파일 로드 (세종은 시도이자 내부 읍면동으로 구성)
     if (sidoName == "세종특별자치시") {
+      print("세종특별자치시 상세 지도 로드 시도 (읍면동 단위)...");
       try {
         final data = await rootBundle.loadString('assets/geo/sejong.geojson');
+        print("세종 GeoJSON 파일 로드 성공!");
         final geoJson = json.decode(data);
         final features = geoJson['features'] as List;
 
+        totalRegionsInSelectedSido = _allSigunguCountsBySido[sidoName] ?? 0; // 미리 계산된 총 개수 사용
+
         for (var feature in features) {
           final props = feature['properties'];
-          final name = props['name'] ?? '이름없음'; // 시군구 이름
+          // 세종시의 읍면동 상세 이름 사용 (예: "세종특별자치시 세종시 연동면")
+          final String regionName = props['adm_nm'] ?? '이름없음_세종_읍면동';
+
+          // _userTripColors 맵에 해당 읍면동 이름이 있는지 확인하여 방문 여부 체크
+          if (_userTripColors.containsKey(regionName) && _userTripColors[regionName]!.isNotEmpty) {
+              visitedRegionsInSelectedSido.add(regionName);
+          }
+
           final geometry = feature['geometry'];
           final type = geometry['type'];
 
-          final fillColor = _getColorForRegion(name); // 시군구 이름으로 색상 가져오기
+          final fillColor = _getColorForRegion(regionName); // 읍면동 이름으로 색상 가져오기
 
           if (type == 'Polygon') {
             for (var ring in geometry['coordinates']) {
               final points = _convertToLatLng(ring);
-              polygons.add(_buildPolygon(id++, points, name, fillColor)); // 색상 전달
+              polygons.add(_buildPolygon(id++, points, regionName, fillColor));
               allPoints.addAll(points);
             }
           } else if (type == 'MultiPolygon') {
             for (var polygon in geometry['coordinates']) {
               for (var ring in polygon) {
                 final points = _convertToLatLng(ring);
-                polygons.add(_buildPolygon(id++, points, name, fillColor)); // 색상 전달
+                polygons.add(_buildPolygon(id++, points, regionName, fillColor));
                 allPoints.addAll(points);
               }
             }
@@ -256,20 +316,22 @@ class _MapScreenState extends State<MapScreen> {
         setState(() {
           _polygons = polygons;
           _selectedSido = sidoName;
+          _visitedSigunguCount = visitedRegionsInSelectedSido.length; // 방문한 읍면동 수
+          _currentViewTotalSigunguCount = totalRegionsInSelectedSido; // 총 읍면동 수
         });
 
         if (allPoints.isNotEmpty) {
           final bounds = _getLatLngBounds(allPoints);
           _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
         }
-        print("세종 상세지도 로딩 완료");
+        print("세종 상세지도 로딩 완료 (읍면동 단위): $sidoName");
       } catch (e) {
         print('세종 GeoJSON 로드 오류: $e');
       }
       return;
     }
 
-    // 일반 시도 처리
+    // 일반 시도 (광역시, 도)의 시군구 처리
     final sidoPrefix = sidoCodeMap[sidoName];
     if (sidoPrefix == null) {
       print("Error: 시도 접두사 코드를 찾을 수 없습니다: $sidoName");
@@ -283,28 +345,35 @@ class _MapScreenState extends State<MapScreen> {
       final geoJson = json.decode(data);
       final features = geoJson['features'] as List;
 
+      // 현재 시도에 해당하는 총 시군구 수 계산
+      totalRegionsInSelectedSido = _allSigunguCountsBySido[sidoName] ?? 0;
+
       for (var feature in features) {
         final props = feature['properties'];
         final code = props['code'].toString();
-        final name = props['name'] ?? '이름없음'; // 시군구 이름
-        if (!code.startsWith(sidoPrefix)) continue;
+        final name = props['name'] ?? '이름없음'; // GeoJSON 시군구 이름 (예: "동구", "수원시")
+        if (!code.startsWith(sidoPrefix)) continue; // 해당 시도에 속하는 시군구만 필터링
+
+        if (_userTripColors.containsKey(name) && _userTripColors[name]!.isNotEmpty) {
+            visitedRegionsInSelectedSido.add(name);
+        }
 
         final geometry = feature['geometry'];
         final type = geometry['type'];
 
-        final fillColor = _getColorForRegion(name); // 시군구 이름으로 색상 가져오기
+        final fillColor = _getColorForRegion(name);
 
         if (type == 'Polygon') {
           for (var ring in geometry['coordinates']) {
             final points = _convertToLatLng(ring);
-            polygons.add(_buildPolygon(id++, points, name, fillColor)); // 색상 전달
+            polygons.add(_buildPolygon(id++, points, name, fillColor));
             allPoints.addAll(points);
           }
         } else if (type == 'MultiPolygon') {
           for (var polygon in geometry['coordinates']) {
             for (var ring in polygon) {
               final points = _convertToLatLng(ring);
-              polygons.add(_buildPolygon(id++, points, name, fillColor)); // 색상 전달
+              polygons.add(_buildPolygon(id++, points, name, fillColor));
               allPoints.addAll(points);
             }
           }
@@ -314,6 +383,8 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _polygons = polygons;
         _selectedSido = sidoName;
+        _visitedSigunguCount = visitedRegionsInSelectedSido.length; // 방문한 시군구 수
+        _currentViewTotalSigunguCount = totalRegionsInSelectedSido; // 총 시군구 수
       });
 
       if (allPoints.isNotEmpty) {
@@ -327,13 +398,14 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // 폴리곤의 경계를 계산하여 카메라를 이동시키는 데 사용
   LatLngBounds _getLatLngBounds(List<LatLng> points) {
     double? minLat, maxLat, minLng, maxLng;
     for (var p in points) {
-      if (minLat == null || p.latitude < minLat) minLat = p.latitude;
-      if (maxLat == null || p.latitude > maxLat) maxLat = p.latitude;
-      if (minLng == null || p.longitude < minLng) minLng = p.longitude;
-      if (maxLng == null || p.longitude > maxLng) maxLng = p.longitude;
+      minLat = minLat == null || p.latitude < minLat ? p.latitude : minLat;
+      maxLat = maxLat == null || p.latitude > maxLat ? p.latitude : maxLat;
+      minLng = minLng == null || p.longitude < minLng ? p.longitude : minLng;
+      maxLng = maxLng == null || p.longitude > maxLng ? p.longitude : maxLng;
     }
     return LatLngBounds(
       southwest: LatLng(minLat!, minLng!),
@@ -341,6 +413,7 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  // GeoJSON 좌표를 LatLng 객체로 변환
   List<LatLng> _convertToLatLng(List coords) {
     return coords.map<LatLng>((c) {
       final lat = c[1].toDouble();
@@ -349,14 +422,14 @@ class _MapScreenState extends State<MapScreen> {
     }).toList();
   }
 
-  // fillColor 파라미터가 추가된 _buildPolygon 함수
+  // 폴리곤 생성 헬퍼 함수
   Polygon _buildPolygon(int id, List<LatLng> points, String name, Color fillColor) {
     return Polygon(
       polygonId: PolygonId(id.toString()),
       points: points,
       strokeWidth: 1,
       strokeColor: Colors.black,
-      fillColor: fillColor.withOpacity(0.6), // 투명도를 60%로 설정했습니다. 필요에 따라 조절하세요.
+      fillColor: fillColor.withOpacity(0.6), // 투명도를 60%로 설정
       consumeTapEvents: true,
       onTap: () {
         print("클릭한 지역: $name");
@@ -369,33 +442,45 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  // 맵 컨트롤러가 생성될 때 호출
   void _onMapCreated(GoogleMapController controller) async {
     _mapController = controller;
     final style = await rootBundle.loadString('assets/map_style.json');
     _mapController?.setMapStyle(style);
   }
 
+  // 줌인/줌아웃 함수
   void _zoomIn() {
-    _currentZoom = (_currentZoom + 1).clamp(0.0, 18.0); // 줌 제한
+    _currentZoom = (_currentZoom + 1).clamp(0.0, 18.0);
     _mapController?.animateCamera(CameraUpdate.zoomTo(_currentZoom));
   }
 
   void _zoomOut() {
-    _currentZoom = (_currentZoom - 1).clamp(0.0, 18.0); // 줌 제한
+    _currentZoom = (_currentZoom - 1).clamp(0.0, 18.0);
     _mapController?.animateCamera(CameraUpdate.zoomTo(_currentZoom));
   }
 
   @override
   Widget build(BuildContext context) {
+    String statsText;
+    if (_selectedSido == null) {
+      // 전국 시도 지도일 때
+      statsText = '시/도 ${_visitedSidoCount} / ${_totalSidoCount} | 시군구 ${_visitedSigunguCount} / ${_totalNationalSigunguCount}';
+    } else {
+      // 특정 시도 상세 지도일 때 (읍면동 단위 포함)
+      statsText = '시군구 ${_visitedSigunguCount} / ${_currentViewTotalSigunguCount}';
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_selectedSido ?? '지도'),
-        leading: _selectedSido != null
+        title: Text(_selectedSido ?? '대한민국 지도'),
+        centerTitle: true, // 제목 중앙 정렬
+        leading: _selectedSido != null // 시군구 상세 지도일 때만 뒤로가기 버튼 표시
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () {
                   setState(() {
-                    _selectedSido = null;
+                    _selectedSido = null; // 시도 선택 초기화
                     _currentZoom = 6.8; // 시도 맵으로 돌아갈 때 초기 줌 레벨로 설정
                   });
                   _drawSidoPolygons(); // 시도 지도로 돌아감
@@ -408,11 +493,25 @@ class _MapScreenState extends State<MapScreen> {
                 },
               )
             : null,
+        bottom: PreferredSize( // Appbar 하단에 통계 표시
+          preferredSize: const Size.fromHeight(24.0), // 원하는 높이 설정
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 4.0),
+            child: Text(
+              statsText,
+              style: const TextStyle(
+                color: Colors.white70, // 글자색 (Appbar 배경에 맞춰)
+                fontSize: 13.0,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
       ),
       body: Stack(
         children: [
           _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator()) // 로딩 중 표시
               : GoogleMap(
                   onMapCreated: _onMapCreated,
                   initialCameraPosition: CameraPosition(
@@ -422,7 +521,7 @@ class _MapScreenState extends State<MapScreen> {
                   polygons: _polygons,
                   myLocationButtonEnabled: false,
                   zoomControlsEnabled: false,
-                  onCameraMove: (position) { // 현재 줌 레벨을 추적하여 줌 버튼 동작에 반영
+                  onCameraMove: (position) {
                     _currentZoom = position.zoom;
                   },
                 ),

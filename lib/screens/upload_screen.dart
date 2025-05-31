@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle; // rootBundle 추가
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
@@ -34,15 +34,12 @@ class _UploadScreenState extends State<UploadScreen> {
   Color? _selectedColor;
   String? _selectedColorName;
 
-  // 기존 텍스트 컨트롤러는 장소, 메모만 남음
   final _placeController = TextEditingController();
   final _memoController = TextEditingController();
 
-  // 드롭다운을 위한 변수
   String? _selectedSido; // 선택된 시/도
   String? _selectedSigungu; // 선택된 시/군/구
 
-  // GeoJSON 데이터 파싱을 위한 맵
   List<String> _sidoNames = []; // 모든 시도 이름 리스트
   Map<String, List<String>> _sigunguNamesMap = {}; // 시도별 시군구 이름 맵
   Map<String, String> _sidoCodeMap = {}; // 시도 이름으로 코드 찾기 (시군구 필터링용)
@@ -53,9 +50,20 @@ class _UploadScreenState extends State<UploadScreen> {
     _loadGeoJsonData(); // GeoJSON 데이터 로드
   }
 
+  @override
+  void dispose() {
+    _placeController.dispose();
+    _memoController.dispose();
+    super.dispose();
+  }
+
   // GeoJSON 파일을 로드하고 시도/시군구 목록을 파싱하는 함수
   Future<void> _loadGeoJsonData() async {
     try {
+      setState(() {
+        _isLoading = true; // 데이터 로드 시작
+      });
+
       // 1. 시도 GeoJSON 로드
       final sidoData = await rootBundle.loadString(
         'assets/geo/skorea_provinces_2018_geo.json',
@@ -72,26 +80,18 @@ class _UploadScreenState extends State<UploadScreen> {
         tempSidoCodeMap[name] = code;
       }
 
-      // 2. 시군구 GeoJSON 로드 (세종시 포함)
+      // 2. 시군구 GeoJSON 로드 (세종시 외 일반 시군구)
       final sigunguData = await rootBundle.loadString(
-        'assets/geo/skorea_municipalities_2018_geo.json',
+        'assets/geo/skorea_municipalities_2018_geo.json', // .json 확장자 수정됨
       );
       final sigunguGeoJson = json.decode(sigunguData);
       Map<String, List<String>> tempSigunguNamesMap = {};
 
-      // 세종시를 위해 별도로 로드
-      final sejongData = await rootBundle.loadString('assets/geo/sejong.geojson');
-      final sejongGeoJson = json.decode(sejongData);
-      // 세종시는 "세종특별자치시" 하나의 이름으로 처리
-      tempSigunguNamesMap['세종특별자치시'] = [(sejongGeoJson['features'][0]['properties']['name'] as String? ?? '세종특별자치시')];
-
-
       for (var feature in sigunguGeoJson['features']) {
         final props = feature['properties'];
-        final name = props['name'] as String;
+        final name = props['name'] as String; // 시군구 이름 (예: "동구", "수원시")
         final code = props['code'].toString();
-        
-        // 시도 코드 접두사를 이용하여 어떤 시도에 속하는 시군구인지 판단
+
         String? parentSidoName;
         for (var entry in tempSidoCodeMap.entries) {
           if (code.startsWith(entry.value)) {
@@ -108,9 +108,44 @@ class _UploadScreenState extends State<UploadScreen> {
         }
       }
 
+      // 3. 세종특별자치시 GeoJSON 로드 및 읍면동 추가
+      try {
+        final sejongData = await rootBundle.loadString('assets/geo/sejong.geojson');
+        final sejongGeoJson = json.decode(sejongData);
+        List<String> sejongSubRegions = [];
+        for (var feature in sejongGeoJson['features']) {
+          final props = feature['properties'];
+          final String subRegionName = props['adm_nm'] as String? ?? props['name'] as String? ?? '알 수 없는 세종 읍면동';
+          sejongSubRegions.add(subRegionName);
+        }
+        tempSigunguNamesMap['세종특별자치시'] = sejongSubRegions;
+      } catch (e) {
+        debugPrint("세종 GeoJSON 로드 중 오류 발생: $e");
+      }
+
+      // --- **추가된 로직: 각 시/도 이름을 시/군/구 목록의 맨 앞에 포함** ---
+      tempSidoNames.forEach((sidoName) {
+        if (!tempSigunguNamesMap.containsKey(sidoName)) {
+          tempSigunguNamesMap[sidoName] = [];
+        }
+        // 각 시/도 목록의 맨 앞에 해당 시/도 이름을 추가 (중복 방지)
+        if (!tempSigunguNamesMap[sidoName]!.contains(sidoName)) {
+            tempSigunguNamesMap[sidoName]!.insert(0, sidoName);
+        }
+      });
+      // --- **추가된 로직 끝** ---
+
       // 시군구 목록 정렬 (선택 사항)
       tempSigunguNamesMap.forEach((key, value) {
-        value.sort();
+        // 시도 이름이 맨 앞에 이미 추가되어 있으므로, 나머지 시군구만 정렬
+        if (value.length > 1) {
+          final sidoName = value[0]; // 시도 이름은 그대로 유지
+          final subList = value.sublist(1)..sort(); // 나머지 시군구만 정렬
+          value
+            ..clear()
+            ..add(sidoName)
+            ..addAll(subList);
+        }
       });
 
       setState(() {
@@ -129,7 +164,6 @@ class _UploadScreenState extends State<UploadScreen> {
       );
     }
   }
-
 
   Future<void> _pickImage() async {
     final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -155,26 +189,39 @@ class _UploadScreenState extends State<UploadScreen> {
     return palette.colors.take(5).toList();
   }
 
-  // GeoPoint는 선택된 시/도와 시/군/구를 기반으로 생성
+  // GeoPoint는 선택된 시/도, 시/군/구, 장소 정보를 기반으로 생성
   Future<GeoPoint?> _getLatLngFromAddress(String sido, String? sigungu, String place) async {
     try {
       String address = sido;
-      if (sigungu != null && sigungu.isNotEmpty && sigungu != sido) { // 시군구가 시도와 같지 않을 때만 추가 (세종시 같은 경우)
+      if (sigungu != null && sigungu.isNotEmpty) {
         address += ' $sigungu';
       }
-      address += ' $place'; // 장소 정보도 포함하여 더 정확한 좌표
+      if (place.isNotEmpty) {
+        address += ' $place';
+      }
 
       final locations = await locationFromAddress(address);
       if (locations.isEmpty) {
-        // 시군구와 장소를 제외하고 시도만으로 다시 시도
         final sidoLocations = await locationFromAddress(sido);
-        if(sidoLocations.isNotEmpty) return GeoPoint(sidoLocations.first.latitude, sidoLocations.first.longitude);
+        if (sidoLocations.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('세부 주소로는 위치를 찾을 수 없어 "$sido"의 중심 좌표로 저장됩니다.')),
+          );
+          return GeoPoint(sidoLocations.first.latitude, sidoLocations.first.longitude);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('주소를 기반으로 한 위치를 찾을 수 없습니다.')),
+        );
         return null;
       }
-      final location = locations.first;
-      return GeoPoint(location.latitude, location.longitude);
+final location = locations.first;
+return GeoPoint(location.latitude, location.longitude); // ✅ 수정 완료
+
     } catch (e) {
       debugPrint('주소 좌표 변환 실패: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('주소 좌표 변환 중 오류 발생: ${e.toString()}')),
+      );
       return null;
     }
   }
@@ -183,9 +230,9 @@ class _UploadScreenState extends State<UploadScreen> {
     if (_image == null ||
         _selectedSido == null ||
         _placeController.text.isEmpty ||
-        _selectedColor == null) { // 색상도 필수 조건에 추가
+        _selectedColor == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미지, 지역, 장소, 색상을 모두 선택해주세요.')),
+        const SnackBar(content: Text('이미지, 지역 (시/도), 장소, 색상을 모두 선택해주세요.')),
       );
       return;
     }
@@ -194,41 +241,54 @@ class _UploadScreenState extends State<UploadScreen> {
 
     final geoPoint = await _getLatLngFromAddress(
       _selectedSido!,
-      _selectedSigungu,
+      _selectedSigungu, // 드롭다운으로 선택된 세부 지역 값
       _placeController.text,
     );
 
     final fileName = path.basename(_image!.path);
     final ref = FirebaseStorage.instance.ref().child('uploads/${widget.uid}/$fileName');
-    await ref.putFile(_image!);
-    final downloadUrl = await ref.getDownloadURL();
+    try {
+      await ref.putFile(_image!);
+      final downloadUrl = await ref.getDownloadURL();
 
-    final docId = const Uuid().v4();
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.uid)
-        .collection('trips')
-        .doc(docId)
-        .set({
-      'imageUrl': downloadUrl,
-      'country': '대한민국', // 고정값으로 설정
-      'city': _selectedSido!, // 시도 이름 저장
-      'sigungu': _selectedSigungu, // 시군구 이름 저장
-      'place': _placeController.text,
-      'memo': _memoController.text,
-      'color': _selectedColor?.value,
-      'timestamp': Timestamp.now(),
-      if (widget.groupId != null) 'groupId': widget.groupId,
-      if (geoPoint != null) 'location': geoPoint,
-    });
+      final docId = const Uuid().v4();
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .collection('trips')
+          .doc(docId)
+          .set({
+        'imageUrl': downloadUrl,
+        'country': '대한민국',
+        'city': _selectedSido!, // 시/도 이름 저장 (전국 지도 색칠에 사용)
+        'sigungu': _selectedSigungu, // 드롭다운으로 선택된 세부 지역 이름 저장
+        'place': _placeController.text,
+        'memo': _memoController.text,
+        'color': _selectedColor?.value,
+        'timestamp': Timestamp.now(),
+        if (widget.groupId != null) 'groupId': widget.groupId,
+        if (geoPoint != null) 'location': geoPoint,
+      });
 
-    setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('여행 기록이 성공적으로 업로드되었습니다!')),
+      );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('여행 기록이 성공적으로 업로드되었습니다!')),
-    );
+      _resetForm();
+      if (widget.onUploadComplete != null) {
+        widget.onUploadComplete!();
+      }
+    } catch (e) {
+      debugPrint('업로드 실패: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('업로드에 실패했습니다: ${e.toString()}')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
-    // 입력 필드 초기화 및 상태 초기화
+  void _resetForm() {
     setState(() {
       _image = null;
       _selectedSido = null;
@@ -239,11 +299,6 @@ class _UploadScreenState extends State<UploadScreen> {
       _selectedColor = null;
       _selectedColorName = null;
     });
-
-    // 업로드 완료 콜백 함수 호출
-    if (widget.onUploadComplete != null) {
-      widget.onUploadComplete!();
-    }
   }
 
   Widget _buildColorCircles() {
@@ -278,20 +333,38 @@ class _UploadScreenState extends State<UploadScreen> {
 
   String getColorName(Color color) {
     int r = color.red, g = color.green, b = color.blue;
-    if (r > 180 && g < 100 && b < 100) return '빨간색';
-    if (r > 200 && g > 180 && b < 100) return '주황색';
+    double brightness = (0.2126 * r + 0.7152 * g + 0.0722 * b);
+    double maxVal = [r, g, b].reduce((a, b) => a > b ? a : b).toDouble();
+    double minVal = [r, g, b].reduce((a, b) => a < b ? a : b).toDouble();
+    double saturation = (maxVal - minVal) / maxVal;
+    if (maxVal == 0) saturation = 0;
+
+    if (brightness > 220 && saturation < 0.2) return '흰색';
+    if (brightness < 30) return '검정색';
+    if (saturation < 0.2) return '회색';
+
+    if (r > g && r > b) {
+      if (g > b) return '주황색';
+      return '빨간색';
+    }
+    if (g > r && g > b) {
+      if (r > b) return '연두색';
+      return '초록색';
+    }
+    if (b > r && b > g) {
+      if (r > g) return '보라색';
+      return '파란색';
+    }
+    
     if (r > 200 && g > 200 && b < 100) return '노란색';
-    if (r < 100 && g > 180 && b < 100) return '초록색';
-    if (r < 120 && g < 120 && b > 180) return '파란색';
-    if (r > 150 && b > 150 && g < 100) return '자주색';
-    if (r > 230 && g > 230 && b > 230) return '흰색';
-    if (r < 60 && g < 60 && b < 60) return '검정색';
+    if (r > 150 && b > 150) return '자주색';
+
     return '기타';
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading && _sidoNames.isEmpty) { // 초기 GeoJSON 로딩 중
+    if (_isLoading && _sidoNames.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('여행 기록 업로드')),
         body: const Center(child: CircularProgressIndicator()),
@@ -326,13 +399,13 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
           const SizedBox(height: 16),
 
-          // 시/도 선택 드롭다운
+          // 시/도 선택 드롭다운 (필수)
           DropdownButtonFormField<String>(
             value: _selectedSido,
-            hint: const Text('지역 (시/도) 선택'),
+            hint: const Text('지역 (시/도) 선택 *'),
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
-              labelText: '지역 (시/도)',
+              labelText: '지역 (시/도) *',
             ),
             items: _sidoNames.map((String sido) {
               return DropdownMenuItem<String>(
@@ -343,43 +416,44 @@ class _UploadScreenState extends State<UploadScreen> {
             onChanged: (String? newValue) {
               setState(() {
                 _selectedSido = newValue;
-                _selectedSigungu = null; // 시도가 바뀌면 시군구 초기화
+                _selectedSigungu = null; // 시도가 바뀌면 세부 지역 초기화
               });
             },
           ),
           const SizedBox(height: 8),
 
-          // 시/군/구 선택 드롭다운 (선택된 시도에 따라 필터링)
-          DropdownButtonFormField<String>(
-            value: _selectedSigungu,
-            hint: const Text('세부 지역 (시/군/구) 선택'),
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              labelText: '세부 지역 (시/군/구)',
-            ),
-            // 선택된 시도가 있을 때만 아이템을 보여줌
-            items: _selectedSido != null
-                ? (_sigunguNamesMap[_selectedSido!] ?? []).map((String sigungu) {
-                    return DropdownMenuItem<String>(
-                      value: sigungu,
-                      child: Text(sigungu),
-                    );
-                  }).toList()
-                : [], // 시도가 선택되지 않으면 빈 리스트
-            onChanged: (String? newValue) {
-              setState(() {
-                _selectedSigungu = newValue;
-              });
-            },
-            // 시도가 선택되지 않으면 비활성화
-            isExpanded: true,
-            menuMaxHeight: 300, // 드롭다운 메뉴 높이 제한
-          ),
+          // 세부 지역 드롭다운 (선택된 시도에 따라 필터링, 시도 이름 포함)
+DropdownButtonFormField<String>(
+  value: _selectedSigungu,
+  hint: const Text('세부 지역 (시/군/구/읍/면/동) 선택'),
+  decoration: const InputDecoration(
+    border: OutlineInputBorder(),
+    labelText: '세부 지역 (시/군/구/읍/면/동)',
+  ),
+  items: _selectedSido != null
+      ? (_sigunguNamesMap[_selectedSido!] ?? []).map((String sigungu) {
+          return DropdownMenuItem<String>(
+            value: sigungu,
+            child: Text(sigungu),
+          );
+        }).toList()
+      : [],
+  onChanged: _selectedSido != null
+      ? (String? newValue) {
+          setState(() {
+            _selectedSigungu = newValue;
+          });
+        }
+      : null, // 시도가 선택되지 않으면 비활성화
+  isExpanded: true,
+  menuMaxHeight: 300,
+),
+
           const SizedBox(height: 8),
 
           TextField(
             controller: _placeController,
-            decoration: const InputDecoration(labelText: '세부 장소 (선택 사항)'),
+            decoration: const InputDecoration(labelText: '세부 장소 (예: 특정 건물, 공원 이름) *'),
           ),
           const SizedBox(height: 8),
           TextField(
