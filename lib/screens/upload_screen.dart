@@ -10,6 +10,8 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter_exif_rotation/flutter_exif_rotation.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+
 
 class UploadScreen extends StatefulWidget {
   final String uid;
@@ -389,8 +391,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
     debugPrint('Attempting geocoding for: $fullAddress');
     try {
-     List<Location> locations = await locationFromAddress(fullAddress); // ✅ 수정 완료
-
+     List<Location> locations = await locationFromAddress(fullAddress);
 
       if (locations.isNotEmpty) {
         debugPrint(
@@ -420,78 +421,81 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 
   Future<void> _upload() async {
-    if (_image == null ||
-        _selectedSido == null ||
-        _placeController.text.isEmpty ||
-        _selectedColor == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미지, 지역 (시/도), 장소, 색상을 모두 선택해주세요.')),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    // 지오코딩을 위해 (필요시) 원본 이름 또는 드롭다운 이름을 전달.
-    // _getLatLngFromAddress 함수 내부에서 적절히 처리됩니다.
-    final geoPoint = await _getLatLngFromAddress(
-      _selectedSido!,
-      _selectedSigungu, // 드롭다운으로 선택된 세부 지역 값 (예: '연동면')
-      _placeController.text,
+  if (_image == null ||
+      _selectedSido == null ||
+      _placeController.text.isEmpty ||
+      _selectedColor == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('이미지, 지역 (시/도), 장소, 색상을 모두 선택해주세요.')),
     );
-
-    // Firestore에 저장될 sigungu 값 결정
-    String? sigunguToSave = _selectedSigungu;
-    if (_selectedSido == '세종특별자치시' && _selectedSigungu != null) {
-      // 세종시의 경우, 드롭다운 이름('연동면')에 해당하는 원본 이름('세종특별자치시 세종시 연동면')을 찾아서 저장합니다.
-      sigunguToSave = _sejongDisplayToRawNameMap[_selectedSigungu];
-    }
-
-
-    final fileName = path.basename(_image!.path);
-    final ref = FirebaseStorage.instance.ref().child(
-      'uploads/${widget.uid}/$fileName',
-    );
-    try {
-      await ref.putFile(_image!);
-      final downloadUrl = await ref.getDownloadURL();
-
-      final docId = const Uuid().v4();
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.uid)
-          .collection('trips')
-          .doc(docId)
-          .set({
-            'imageUrl': downloadUrl,
-            'country': '대한민국',
-            'city': _selectedSido!, // 시/도 이름 저장 (전국 지도 색칠에 사용)
-            'sigungu': sigunguToSave, // ✅ Firestore에 저장되는 sigungu 값 수정
-            'place': _placeController.text,
-            'memo': _memoController.text,
-            'color': _selectedColor?.value,
-            'timestamp': Timestamp.now(),
-            if (widget.groupId != null) 'groupId': widget.groupId,
-            if (geoPoint != null) 'location': geoPoint,
-          });
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('여행 기록이 성공적으로 업로드되었습니다!')));
-
-      _resetForm();
-      if (widget.onUploadComplete != null) {
-        widget.onUploadComplete!();
-      }
-    } catch (e) {
-      debugPrint('업로드 실패: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('업로드에 실패했습니다: ${e.toString()}')));
-    } finally {
-      setState(() => _isLoading = false);
-    }
+    return;
   }
+
+  setState(() => _isLoading = true);
+
+  final geoPoint = await _getLatLngFromAddress(
+    _selectedSido!,
+    _selectedSigungu,
+    _placeController.text,
+  );
+
+  // 세종시 원본 명칭 저장
+  String? sigunguToSave = _selectedSigungu;
+  if (_selectedSido == '세종특별자치시' && _selectedSigungu != null) {
+    sigunguToSave = _sejongDisplayToRawNameMap[_selectedSigungu];
+  }
+
+  final fileName = path.basename(_image!.path);
+  final ref = FirebaseStorage.instance.ref().child(
+    'uploads/${widget.uid}/$fileName',
+  );
+
+  try {
+    await ref.putFile(_image!);
+    final downloadUrl = await ref.getDownloadURL();
+
+    final docId = const Uuid().v4();
+
+    final isCityLevel = _selectedSigungu == null || _selectedSigungu == _selectedSido;
+
+    final tripData = {
+      'imageUrl': downloadUrl,
+      'country': '대한민국',
+      'sigungu': sigunguToSave,
+      'place': _placeController.text,
+      'memo': _memoController.text,
+      'color': _selectedColor?.value,
+      'timestamp': Timestamp.now(),
+      if (widget.groupId != null) 'groupId': widget.groupId,
+      if (geoPoint != null) 'location': geoPoint,
+      if (isCityLevel) 'city': _selectedSido!,
+    };
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.uid)
+        .collection('trips')
+        .doc(docId)
+        .set(tripData);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('여행 기록이 성공적으로 업로드되었습니다!')),
+    );
+
+    _resetForm();
+    if (widget.onUploadComplete != null) {
+      widget.onUploadComplete!();
+    }
+  } catch (e) {
+    debugPrint('업로드 실패: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('업로드에 실패했습니다: ${e.toString()}')),
+    );
+  } finally {
+    setState(() => _isLoading = false);
+  }
+}
+
 
   void _resetForm() {
     setState(() {
@@ -656,6 +660,18 @@ class _UploadScreenState extends State<UploadScreen> {
                         setState(() {
                           _selectedSigungu = newValue;
                         });
+                        // 토스트 메시지 띄우기
+                        if (newValue != null && newValue.isNotEmpty) {
+                          Fluttertoast.showToast(
+                            msg: "$newValue을(를) 선택했습니다.",
+                            toastLength: Toast.LENGTH_SHORT,
+                            gravity: ToastGravity.BOTTOM,
+                            timeInSecForIosWeb: 1,
+                            backgroundColor: Colors.black54,
+                            textColor: Colors.white,
+                            fontSize: 16.0,
+                          );
+                        }
                       }
                       : null, // 시도가 선택되지 않으면 비활성화
               isExpanded: true,

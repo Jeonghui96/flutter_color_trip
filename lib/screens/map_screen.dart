@@ -2,8 +2,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fluttertoast/fluttertoast.dart'; // Fluttertoast import 추가
+
+// MyTripsScreen을 import하여 함수를 전달할 수 있도록 합니다.
+// 'package:your_app_name/my_trips_screen.dart' 부분을 실제 프로젝트 경로에 맞게 수정해주세요.
+import 'package:flutter_colortrip_app/screens/my_trips_screen.dart'; // 실제 프로젝트 경로에 맞게 수정
+
 
 class MapScreen extends StatefulWidget {
   final String uid; // 사용자 UID를 받아야 합니다.
@@ -46,38 +51,30 @@ class _MapScreenState extends State<MapScreen> {
   // 전국 총 시군구/읍면동 개수 (세종시의 읍면동 포함)
   int _totalNationalSigunguCount = 0;
 
-
   @override
   void initState() {
     super.initState();
-    // 모든 초기 데이터 로딩을 단일 비동기 함수로 묶어 관리
     _initializeMapData();
   }
 
   /// 모든 필요한 데이터(GeoJSON, 여행 기록)를 로드하고 초기 지도를 그립니다.
-  /// 이 함수는 `initState`에서 한 번만 호출되며, 모든 데이터 로딩이 완료될 때까지
-  /// 로딩 인디케이터를 표시합니다.
   Future<void> _initializeMapData() async {
     setState(() {
       _isLoading = true; // 로딩 시작
     });
     try {
-      // 모든 시군구/읍면동 개수 미리 로드 (필수)
       await _loadAllSigunguCounts();
-      // 시도 GeoJSON 데이터 로드 (필수)
       await _loadSidoGeoJson();
-      // 사용자 여행 기록 데이터 로드 (필수)
       await _loadTripData();
 
-      // 모든 데이터 로딩이 완료된 후, 초기 지도 그리기
       if (_selectedSido == null) {
-        _drawSidoPolygons(); // 전국 시도 지도를 그립니다.
+        _drawSidoPolygons();
       } else {
-        _drawSigunguPolygons(_selectedSido!); // 특정 시도 상세 지도를 그립니다.
+        _drawSigunguPolygons(_selectedSido!);
       }
     } catch (e) {
       print("지도 데이터 초기화 중 오류 발생: $e");
-      // 필요하다면 사용자에게 오류 메시지를 보여주는 로직 추가
+      // 사용자에게 오류 메시지를 보여주는 로직 추가
     } finally {
       setState(() {
         _isLoading = false; // 로딩 완료
@@ -85,9 +82,31 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // MyTripsScreen에서 색상을 적용하기 위해 호출됩니다.
+  void applyColorToMap(String regionName, Color color) {
+    setState(() {
+      // 해당 지역의 기존 색상을 지우고 새 색상을 추가합니다.
+      // MyTripsScreen에서 한 번에 하나의 색상만 적용한다고 가정합니다.
+      // 기존 색상에 추가하려면 이 로직을 수정해야 합니다.
+      _userTripColors[regionName] = [color];
+      print('applyColorToMap: $regionName 에 색상 ${color.value.toRadixString(16)} 적용됨');
+      print('_userTripColors 업데이트 후: $_userTripColors');
+    });
+
+    // 새 색상을 반영하기 위해 폴리곤을 다시 그립니다.
+    if (_selectedSido == null) {
+      _drawSidoPolygons(); // 현재 시도 뷰이면 시도 폴리곤을 다시 그립니다.
+    } else {
+      // 현재 시군구 뷰이면 해당 시군구 뷰를 다시 그립니다.
+      // applyColorToMap으로 전달된 regionName이 현재 _selectedSido (시도 이름)와 일치하는지 확인합니다.
+      // 아니면, 전달된 regionName이 _selectedSido의 하위 행정구역일 수 있습니다.
+      // 예: _selectedSido="대구광역시", regionName="동구"
+      // 이 경우, _selectedSido의 상세 지도를 다시 그리는 것이 맞습니다.
+      _drawSigunguPolygons(_selectedSido!);
+    }
+  }
 
   // 모든 시군구/읍면동의 총 개수를 미리 로드하여 통계에 사용
-  // 이 함수는 skorea_municipalities_2018_geo.json과 sejong.geojson을 모두 파싱합니다.
   Future<void> _loadAllSigunguCounts() async {
     try {
       Map<String, int> tempSidoTotalSigunguCounts = {};
@@ -114,7 +133,6 @@ class _MapScreenState extends State<MapScreen> {
       }
 
       // 2. 세종특별자치시 GeoJSON 로드 (sejong.geojson)
-      // 세종시는 읍면동 단위로 분할되어 있다고 가정하고 처리합니다.
       try {
         final sejongData = await rootBundle.loadString('assets/geo/sejong.geojson');
         final sejongGeoJson = json.decode(sejongData);
@@ -176,13 +194,26 @@ class _MapScreenState extends State<MapScreen> {
           // `skorea_municipalities_2018_geo.json`의 `properties.name` (예: "동구", "수원시")
           // `sejong.geojson`의 `properties.adm_nm` (예: "세종특별자치시 세종시 연동면")
           if (firebaseSigungu != null && firebaseSigungu.isNotEmpty) {
-            String regionKey = firebaseSigungu; // Firestore의 시군구/읍면동 값을 그대로 사용
+            // Firebase에 저장된 sigungu를 GeoJSON 이름에 맞게 조정 (로드 시점에도 필요)
+            String regionKeyToLoad = firebaseSigungu;
+            // 예시: "대구 동구"와 같이 GeoJSON에 "시도명 시군구명"으로 되어 있는 경우 처리
+            // 현재 코드에서는 해당 로직이 없으니, GeoJSON의 'name' 속성을 그대로 사용한다고 가정
+            // (즉, '동구'는 '동구'로, '수원시'는 '수원시'로 저장된다고 가정)
 
-            if (!tempTripColors.containsKey(regionKey)) {
-              tempTripColors[regionKey] = [];
+            // 만약 Firebase 저장 시 세종시 읍면동이 '연동면'처럼 짧게 저장되고
+            // GeoJSON에는 '세종특별자치시 세종시 연동면'처럼 풀네임으로 되어있다면 매핑 필요
+            // 이 부분은 UploadScreen의 _sejongDisplayToRawNameMap 로직과 연관
+            // 현재 UploadScreen은 GeoJSON의 원본 adm_nm을 저장하므로 MapScreen에서 별도 처리 불필요
+            // 단, GeoJSON을 로드할 때 세종 읍면동 이름을 어떻게 처리했는지에 따라 여기도 맞춰야 함.
+            // 현재 UploadScreen은 GeoJSON 원본인 '세종특별자치시 세종시 연동면'을 그대로 Firestore에 저장하므로,
+            // 별도 매핑 로직 없이 firebaseSigungu를 그대로 regionKeyToLoad로 사용.
+            // 위에서 추가한 대구광역시 동구 예시와 세종 읍면동 예시는 실제 데이터 형태에 맞춰 수정해야 합니다.
+
+            if (!tempTripColors.containsKey(regionKeyToLoad)) {
+              tempTripColors[regionKeyToLoad] = [];
             }
-            tempTripColors[regionKey]!.add(tripColor);
-            visitedSigungus.add(regionKey); // 방문한 시군구/읍면동 카운트를 위해 추가
+            tempTripColors[regionKeyToLoad]!.add(tripColor);
+            visitedSigungus.add(regionKeyToLoad); // 방문한 시군구/읍면동 카운트를 위해 추가
           }
         }
       }
@@ -193,14 +224,7 @@ class _MapScreenState extends State<MapScreen> {
         _visitedSigunguCount = visitedSigungus.length; // 전국 기준 방문 시군구/읍면동 수
         _currentViewTotalSigunguCount = _totalNationalSigunguCount; // 초기에는 전국 총 시군구/읍면동 수로 설정
       });
-      
-      // 이 부분에서 _drawSidoPolygons 또는 _drawSigunguPolygons 호출은
-      // _initializeMapData()에서 일괄 처리되므로 여기서는 제거합니다.
-      // if (_selectedSido == null) {
-      //   _drawSidoPolygons();
-      // } else {
-      //   _drawSigunguPolygons(_selectedSido!);
-      // }
+      print('여행 기록 로드 완료. _userTripColors: $_userTripColors');
 
     } catch (e) {
       print('여행 기록 로드 오류: $e');
@@ -238,6 +262,7 @@ class _MapScreenState extends State<MapScreen> {
         'assets/geo/skorea_provinces_2018_geo.json',
       );
       _sidoGeoJson = json.decode(sidoData);
+      print('시도 GeoJSON 로드 완료');
     } catch (e) {
       print('시도 GeoJSON 로드 오류: $e');
     }
@@ -282,14 +307,14 @@ class _MapScreenState extends State<MapScreen> {
       _polygons = polygons;
       _selectedSido = null; // 시도 지도 상태임을 명시
       _currentViewTotalSigunguCount = _totalNationalSigunguCount; // 전국 시군구 통계로 업데이트
-      // _visitedSigunguCount는 _loadTripData에서 이미 계산된 전국 시군구 방문 수임.
-
-      if (_mapController != null) {
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(_initialPosition, _currentZoom),
-        );
-      }
     });
+
+    if (_mapController != null) {
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(_initialPosition, _currentZoom),
+      );
+    }
+    print('시도 폴리곤 다시 그리기 완료');
   }
 
   // 특정 시도의 시군구/읍면동 폴리곤을 그립니다.
@@ -384,7 +409,7 @@ class _MapScreenState extends State<MapScreen> {
       for (var feature in features) {
         final props = feature['properties'];
         final code = props['code'].toString();
-        final name = props['name'] ?? '이름없음'; // GeoJSON 시군구 이름 (예: "동구", "수원시")
+        final name = props['name'] ?? '이름없음'; // GeoJSON 시군구 이름 (예: "동구", "수원시", "대구 동구")
         if (!code.startsWith(sidoPrefix)) continue; // 해당 시도에 속하는 시군구만 필터링
 
         if (_userTripColors.containsKey(name) && _userTripColors[name]!.isNotEmpty) {
@@ -466,9 +491,17 @@ class _MapScreenState extends State<MapScreen> {
       consumeTapEvents: true,
       onTap: () {
         print("클릭한 지역: $name");
-        // 이 부분에서 기존에 _userTripColors에 여러 색상이 있을 때
-        // 색상 선택 다이얼로그를 띄우는 로직이 있었으나 제거되었습니다.
-        // 만약 이 기능이 필요하다면 다시 추가해야 합니다.
+        // 토스트 메시지 띄우기
+        Fluttertoast.showToast(
+          msg: "$name을(를) 선택했습니다.",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+          fontSize: 16.0,
+        );
+
         if (_selectedSido == null) {
           // 시도 단계에서만 시군구 상세 지도로 전환
           _drawSigunguPolygons(name);
@@ -518,7 +551,6 @@ class _MapScreenState extends State<MapScreen> {
                   setState(() {
                     _selectedSido = null; // 시도 선택 초기화
                     _currentZoom = 6.8; // 시도 맵으로 돌아갈 때 초기 줌 레벨로 설정
-                    // _temporarySelectedRegionColor.clear(); // 임시 색상 맵이 없으므로 주석 처리
                   });
                   _drawSidoPolygons(); // 시도 지도로 돌아감
                   _mapController?.animateCamera(
