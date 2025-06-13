@@ -6,11 +6,12 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.7.0 <4.0.0"
+  sdk: ">=3.8.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
+
   fluttertoast: ^8.2.12
 
   # 화면 관련
@@ -22,6 +23,7 @@ dependencies:
   image_picker: ^1.1.2
   palette_generator: ^0.3.3+1
   exif: ^3.3.0
+  flutter_exif_rotation: ^0.5.2
 
   # 위치, 주소
   geocoding: ^3.0.0
@@ -34,7 +36,6 @@ dependencies:
   uuid: ^4.4.0
   geojson: ^1.0.0
   share_plus: ^7.2.1
-  
 
   # Firebase (FlutterFire 권장 버전 반영)
   firebase_core: ^3.13.1
@@ -42,7 +43,11 @@ dependencies:
   firebase_storage: ^12.4.6
   firebase_auth: ^5.5.4
   google_sign_in: ^6.3.0
-  flutter_exif_rotation: ^0.5.2
+
+  # OpenAI 연동
+  http: ^1.2.1
+  flutter_dotenv: ^5.2.1
+  google_generative_ai: ^0.4.7
 
 dev_dependencies:
   flutter_test:
@@ -58,3 +63,4 @@ flutter:
     - assets/geo/skorea_municipalities_2018_geo.json
     - assets/geo/skorea_provinces_2018_geo.json
     - assets/geo/sejong.geojson
+    - .env

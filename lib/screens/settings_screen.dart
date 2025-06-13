@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart'; // Clipboard 사용을 위해 import
-import 'package:share_plus/share_plus.dart';
+import 'package:share_plus/share_plus.dart'; // share_plus import
 import 'package:uuid/uuid.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'my_trips_screen.dart';
+import 'my_trips_screen.dart'; // my_trips_screen.dart import
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // dotenv import
+
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -34,6 +36,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadUserInfoAndGroupInfo();
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   Future<void> _loadUserInfoAndGroupInfo() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -50,7 +57,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
     final userData = userDoc.data();
-    
+
     setState(() {
       _nickname = userData?['nickname'] as String?;
     });
@@ -71,15 +78,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final groupDoc = await FirebaseFirestore.instance.collection('groups').doc(gid).get();
     final groupData = groupDoc.data();
 
-    // 그룹 멤버 정보 불러오기 (UID와 닉네임/이메일 함께 저장)
     List<Map<String, String>> currentMembersWithId = [];
     final usersInGroup = await FirebaseFirestore.instance.collection('users')
         .where('groupId', isEqualTo: gid)
         .get();
     for (var memberUserDoc in usersInGroup.docs) {
       final memberUserData = memberUserDoc.data();
-      String memberDisplayName = memberUserData['nickname'] as String? ?? memberUserData['email'] as String? ?? memberUserDoc.id;
-      
+      String memberDisplayName = memberUserData?['nickname'] as String? ?? memberUserData?['email'] as String? ?? memberUserDoc.id;
+
       if (memberDisplayName.isNotEmpty) {
         currentMembersWithId.add({
           'uid': memberUserDoc.id,
@@ -140,7 +146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 {'groupId': gid, 'email': userEmail ?? 'unknown'},
                 SetOptions(merge: true),
               );
-              
+
               String currentMemberDisplayName = _nickname ?? userEmail ?? uid;
               List<Map<String, String>> newGroupMembersWithId = [];
               if (currentMemberDisplayName.isNotEmpty) {
@@ -168,7 +174,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _joinGroup(BuildContext context) async {
-    if (groupId != null) { // 이미 그룹에 가입되어 있다면 리턴
+    if (groupId != null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('이미 그룹에 가입되어 있어요')));
       return;
     }
@@ -359,12 +365,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // 그룹 멤버 강퇴 로직 (그룹장만 가능)
   Future<void> _kickMember(String memberUid, String memberDisplayName) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || groupId == null || uid != groupOwnerId) { // 그룹장이 아니면 강퇴 불가
+    if (uid == null || groupId == null || uid != groupOwnerId) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('그룹장만 멤버를 강퇴할 수 있습니다.')));
       return;
     }
-    if (memberUid == uid) { // 그룹장 본인은 강퇴할 수 없음
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('자기 자신을 강퇴할 수 없습니다. 그룹을 나가려면 그룹 나가기 버튼을 이용해주세요.')));
+    if (memberUid == uid) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('자기 자신을 강퇴할 수 없습니다. 그룹 나가기는 아래 버튼을 이용해주세요.')));
       return;
     }
 
@@ -383,12 +389,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirm == true) {
       try {
         await FirebaseFirestore.instance.collection('users').doc(memberUid).update({
-          'groupId': FieldValue.delete(), // 해당 멤버의 groupId 필드 삭제
+          'groupId': FieldValue.delete(),
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$memberDisplayName 님이 그룹에서 강퇴되었습니다.')),
         );
-        _loadUserInfoAndGroupInfo(); // 변경된 그룹 멤버 목록 다시 불러오기
+        _loadUserInfoAndGroupInfo();
       } catch (e) {
         print('멤버 강퇴 중 오류 발생: $e');
         ScaffoldMessenger.of(context).showSnackBar(
@@ -397,6 +403,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -438,6 +445,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           const SizedBox(height: 8),
+
+          const Divider(height: 32, thickness: 1),
+
           if (groupId == null) ...[
             const Text('그룹 설정', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             ListTile(
@@ -487,7 +497,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ],
                     ),
-                    // 그룹장 표시 (카드 내부에 명확히)
                     if (groupOwnerId != null && currentUid == groupOwnerId)
                       Padding(
                         padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
@@ -520,12 +529,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           },
                         ),
                       ),
-                    
-                    // ✅ GestureDetector로 감싸서 터치 시 복사 기능 추가
                     GestureDetector(
                       onTap: () {
                         if (groupId != null && groupPassword != null) {
-                          final textToCopy = '그룹 코드: $groupId\n비밀번호: $groupPassword';
+                          final textToCopy = '그룹 코드: $groupId\n비밀번호: ${groupPassword ?? ''}';
                           Clipboard.setData(ClipboardData(text: textToCopy));
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('그룹 코드와 비밀번호가 복사되었습니다.')),
@@ -562,15 +569,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               final memberUid = member['uid'];
                               final displayName = member['displayName'] ?? '';
                               final isCurrentMemberOwner = (memberUid == groupOwnerId);
-                              
-                              // ✅ GestureDetector로 감싸서 터치 시 강퇴 기능 추가
+
                               return GestureDetector(
                                 onTap: () {
-                                  // 자신을 강퇴하지 못하도록, 그룹장이 아니면 강퇴 버튼을 누르지 못하도록
                                   if (currentUid == groupOwnerId && memberUid != currentUid) {
                                     _kickMember(memberUid!, displayName);
                                   } else if (memberUid == currentUid) {
-                                     // 자기 자신을 터치했을 때 메시지 (선택 사항)
                                      ScaffoldMessenger.of(context).showSnackBar(
                                        const SnackBar(content: Text('자기 자신을 강퇴할 수 없습니다. 그룹 나가기는 아래 버튼을 이용하세요.')),
                                      );
@@ -597,7 +601,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+          const SizedBox(height: 8),
             ListTile(
               leading: Icon(Icons.exit_to_app, color: currentUid == groupOwnerId ? Colors.red : Colors.orange),
               title: Text(currentUid == groupOwnerId ? '그룹 삭제 및 나가기' : '그룹 나가기', style: TextStyle(color: Colors.black)),
@@ -624,7 +628,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('앱 정보'),
-            subtitle: const Text('버전 1.0.0'),
+            subtitle: const Text('버전 1.0.0'), // 이 부분은 실제 앱 버전에 맞게 수정하세요.
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           ListTile(

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_colortrip_app/screens/map_screen.dart';
+import 'package:flutter_colortrip_app/screens/upload_screen.dart';
+import 'package:flutter_colortrip_app/screens/settings_screen.dart';
+import 'package:flutter_colortrip_app/screens/ai_recommendation_screen.dart';
 import '../providers/auth_provider.dart';
-import 'map_screen.dart'; // map_screen.dart의 정확한 경로
-import 'upload_screen.dart'; // upload_screen.dart의 정확한 경로
-import 'settings_screen.dart'; // settings_screen.dart의 정확한 경로
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -17,17 +18,21 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // AuthProvider에서 uid를 가져옵니다.
-    // listen: false를 사용하여 불필요한 위젯 리빌드를 방지할 수 있습니다.
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final String uid = authProvider.user?.uid ?? ''; // 유저가 없으면 빈 문자열 (실제 앱에서는 로그인 강제)
+    final authProvider = Provider.of<AuthProvider>(context);
+    final uid = authProvider.user?.uid ?? '';
 
-    // _screens 리스트의 MapScreen에 uid를 전달합니다.
     final List<Widget> _screens = [
-      // MapScreen에 uid를 전달하도록 수정
-      MapScreen(uid: uid), // 여기에 uid를 전달합니다.
-      UploadScreen(uid: uid, groupId: null), // 이미 uid를 전달하고 있었네요.
+      MapScreen(uid: uid),
+      UploadScreen(uid: uid, groupId: null),
+      const AiRecommendationScreen(), // AI 추천 탭 추가
       const SettingsScreen(),
+    ];
+
+    final List<BottomNavigationBarItem> _bottomItems = [
+      const BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
+      const BottomNavigationBarItem(icon: Icon(Icons.upload_file), label: '업로드'),
+      const BottomNavigationBarItem(icon: Icon(Icons.travel_explore), label: '추천'),
+      const BottomNavigationBarItem(icon: Icon(Icons.settings), label: '설정'),
     ];
 
     return Scaffold(
@@ -37,11 +42,8 @@ class _MainScreenState extends State<MainScreen> {
         onTap: (index) => setState(() => _currentIndex = index),
         selectedItemColor: Colors.deepPurpleAccent,
         unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
-          BottomNavigationBarItem(icon: Icon(Icons.add_a_photo), label: '추가하기'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: '더보기'),
-        ],
+        type: BottomNavigationBarType.fixed,
+        items: _bottomItems,
       ),
     );
   }
