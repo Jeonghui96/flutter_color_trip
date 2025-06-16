@@ -1,11 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:cloud_firestore/cloud_firestore.dart'; // GeoPoint 때문에 필요하면 유지
-import 'package:fluttertoast/fluttertoast.dart'; // 토스트 메시지 때문에 필요하면 유지
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // API 키 로드를 위해 필요 (GeminiService에서 사용)
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-// 정적 메서드를 사용하는 GeminiService를 import 합니다.
 import '../services/gemini_service.dart';
 
 class AiRecommendationScreen extends StatefulWidget {
@@ -16,33 +15,34 @@ class AiRecommendationScreen extends StatefulWidget {
 }
 
 class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
-  // --- UploadScreen에서 가져온 GeoJSON 관련 변수들 ---
-  String? _selectedSido; // 선택된 시/도
-  String? _selectedSigungu; // 선택된 시/군/구 (드롭다운 표시용)
+  String? _selectedSido;
+  String? _selectedSigungu;
 
-  List<String> _sidoNames = []; // 모든 시도 이름 리스트
-  Map<String, List<String>> _sigunguNamesMap = {}; // 시도별 시군구 이름 맵
-  Map<String, String> _sidoCodeMap = {}; // 시도 이름으로 코드 찾기
-  Map<String, GeoPoint> _sidoCentroids = {}; // 시도별 중심 좌표
-  Map<String, GeoPoint> _sigunguCentroids = {}; // 시군구/세종시 읍면동별 중심 좌표
-  Map<String, String> _sejongDisplayToRawNameMap = {}; // 세종시 원본 adm_nm 저장
-  // --- 끝 ---
+  List<String> _sidoNames = [];
+  Map<String, List<String>> _sigunguNamesMap = {};
+  Map<String, String> _sidoCodeMap = {};
+  Map<String, GeoPoint?> _sidoCentroids = {};
+  Map<String, GeoPoint?> _sigunguCentroids = {};
+  Map<String, String> _sejongDisplayToRawNameMap = {};
 
-  bool _isLoadingGeoJson = true; // GeoJSON 로딩 상태
-  bool _isGeneratingRecommendation = false; // AI 추천 생성 중 상태
+  bool _isLoadingGeoJson = true;
+  bool _isGeneratingLocationRecommendation = false;
+  bool _isGeneratingRestaurantRecommendation = false;
 
-  String _aiRecommendationResult = ''; // AI 추천 결과 텍스트
+  List<Map<String, String>> _parsedRecommendedLocations = [];
+  List<Map<String, String>> _parsedRecommendedRestaurants = [];
+
+  String _rawAiLocationRecommendationResult = '';
+  String _rawAiRestaurantRecommendationResult = '';
+
+  String? _currentRecommendationType;
 
   @override
   void initState() {
     super.initState();
-    // dotenv.load()는 main() 함수에서 앱 시작 시 한 번만 호출되도록 권장됩니다.
-    // 여기서는 GeoJSON 데이터만 로드합니다.
     _loadGeoJsonData();
   }
 
-  // --- UploadScreen에서 가져온 GeoJSON 관련 함수들 ---
-  // GeoJSON Feature에서 중심 좌표를 추출하는 헬퍼 함수
   GeoPoint? _getCentroidFromGeoJsonFeature(Map<String, dynamic> feature) {
     try {
       final geometry = feature['geometry'];
@@ -86,14 +86,12 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
     return null;
   }
 
-  // GeoJSON 파일을 로드하고 시도/시군구 목록 및 중심 좌표를 파싱하는 함수
   Future<void> _loadGeoJsonData() async {
     try {
       setState(() {
         _isLoadingGeoJson = true;
       });
 
-      // 1. 시도 GeoJSON 로드
       final sidoData = await rootBundle.loadString(
         'assets/geo/skorea_provinces_2018_geo.json',
       );
@@ -124,7 +122,6 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
         }
       }
 
-      // 2. 시군구 GeoJSON 로드 (세종시 외 일반 시군구)
       final sigunguData = await rootBundle.loadString(
         'assets/geo/skorea_municipalities_2018_geo.json',
       );
@@ -167,7 +164,6 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
         }
       }
 
-      // 3. 세종특별자치시 GeoJSON 로드 및 읍면동 추가 및 중심 좌표 저장
       try {
         final sejongData = await rootBundle.loadString(
           'assets/geo/sejong.geojson',
@@ -217,7 +213,6 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
         tempSigunguNamesMap['세종특별자치시'] = sejongSubRegions;
       } catch (e) {
         debugPrint("세종 GeoJSON 로드 및 파싱 중 오류 발생: $e");
-        // 세종시 GeoJSON 로드 실패 시에도 앱이 크래시되지 않도록 처리
       }
 
       tempSidoNames.forEach((sidoName) {
@@ -264,9 +259,46 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
       );
     }
   }
-  // --- GeoJSON 관련 함수 끝 ---
 
-  Future<void> _getAiRecommendations() async {
+  void _parseRecommendedItems(String recommendation, String type) {
+    final lines = recommendation.split('\n');
+    List<Map<String, String>> currentList = [];
+
+    // The parsing now begins from the first line that matches the expected item format
+    // regardless of a preceding "명소:" or "맛집:" header.
+    // This makes it more resilient to slight variations in the AI's header output.
+    final RegExp itemRegExp = RegExp(r'^\s*\d+\.\s*([^\[\]]+?)\s*-\s*(.+)$');
+
+    for (var line in lines) {
+      final String trimmedLine = line.trim();
+      Match? match = itemRegExp.firstMatch(trimmedLine);
+
+      if (match != null && match.group(1) != null && match.group(2) != null) {
+        final name = match.group(1)!.trim();
+        // Remove unnecessary newlines and collapse multiple spaces into a single space
+        final description = match.group(2)!.trim().replaceAll(RegExp(r'\s+'), ' ');
+        currentList.add({'name': name, 'description': description});
+      }
+    }
+
+    // Update the state variables based on the type of recommendation
+    if (type == 'location') {
+      setState(() { // setState inside to ensure UI updates after parsing
+        _parsedRecommendedLocations = List.from(currentList);
+        // Clear raw result if parsed list is not empty, otherwise keep for debugging
+        _rawAiLocationRecommendationResult = _parsedRecommendedLocations.isEmpty ? recommendation : '';
+      });
+    } else if (type == 'restaurant') {
+      setState(() { // setState inside to ensure UI updates after parsing
+        _parsedRecommendedRestaurants = List.from(currentList);
+        // Clear raw result if parsed list is not empty, otherwise keep for debugging
+        _rawAiRestaurantRecommendationResult = _parsedRecommendedRestaurants.isEmpty ? recommendation : '';
+      });
+    }
+  }
+
+
+  Future<void> _getAiLocationRecommendations() async {
     if (_selectedSido == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('시/도를 선택해주세요.')),
@@ -275,43 +307,109 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
     }
 
     setState(() {
-      _isGeneratingRecommendation = true;
-      _aiRecommendationResult = ''; // 이전 결과 초기화
+      _isGeneratingLocationRecommendation = true;
+      _parsedRecommendedLocations.clear();
+      _rawAiLocationRecommendationResult = '';
+
+      _parsedRecommendedRestaurants.clear(); // Clear other type's data
+      _rawAiRestaurantRecommendationResult = ''; // Clear other type's raw data
+      _currentRecommendationType = 'location'; // Set current type
     });
 
     try {
       String locationPrompt = _selectedSido!;
-      // 세종시의 경우, 원본 adm_nm을 프롬프트에 포함하여 정확도를 높일 수 있습니다.
       if (_selectedSido == '세종특별자치시' && _selectedSigungu != null && _sejongDisplayToRawNameMap.containsKey(_selectedSigungu!)) {
-        locationPrompt = _sejongDisplayToRawNameMap[_selectedSigungu!]!; // 예: "세종특별자치시 세종시 연동면"
+        locationPrompt = _sejongDisplayToRawNameMap[_selectedSigungu!]!;
       } else if (_selectedSigungu != null && _selectedSigungu!.isNotEmpty && _selectedSigungu! != _selectedSido!) {
         locationPrompt += ' $_selectedSigungu';
       }
 
-      // 프롬프트 구성 (구체적으로 요청)
-      // GeminiService의 systemInstruction이 마크다운 사용을 금지하므로, 답변 형식에 맞춰 요청합니다.
-      final userPrompt = "$locationPrompt 에 있는 명소 3군데와 맛집 3군데를 추천해줘. 각 추천에는 간단한 설명도 포함해줘. "
-                         "응답은 다음과 같은 형식으로 부탁해: "
-                         "명소:\n1. [명소1 이름] - [간단 설명]\n2. [명소2 이름] - [간단 설명]\n3. [명소3 이름] - [간단 설명]\n\n맛집:\n1. [맛집1 이름] - [간단 설명]\n2. [맛집2 이름] - [간단 설명]\n3. [맛집3 이름] - [간단 설명]";
+      // Updated prompt to explicitly request the format.
+      // Removed the "명소:" header from the format request in the prompt
+      // to make parsing more robust, as the regex doesn't rely on it.
+      String userPrompt = "$locationPrompt 에 있는 명소 3군데를 추천해줘. 각 추천에는 간단한 설명도 포함해줘. "
+                          "응답은 반드시 다음 형식으로 해줘: "
+                          "1. [명소1 이름] - [간단 설명]\n2. [명소2 이름] - [간단 설명]\n3. [명소3 이름] - [간단 설명]";
 
-      // GeminiService의 static 메서드 호출
       final response = await GeminiService.getRecommendation(userPrompt);
 
-      setState(() {
-        _aiRecommendationResult = response;
-      });
+      debugPrint('--- Gemini Raw Response (Location) ---');
+      debugPrint(response);
+      debugPrint('------------------------------------');
+
+      // The _parseRecommendedItems method now calls setState internally.
+      _parseRecommendedItems(response, 'location');
 
     } catch (e) {
-      debugPrint('AI 추천 생성 실패: $e');
+      debugPrint('명소 추천 생성 실패: $e');
       setState(() {
-        _aiRecommendationResult = '추천을 생성하는 중 오류가 발생했습니다: ${e.toString()}';
+        _rawAiLocationRecommendationResult = '명소 추천을 생성하는 중 오류가 발생했습니다: ${e.toString()}';
+        _parsedRecommendedLocations.clear();
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('AI 추천 생성에 실패했습니다: ${e.toString()}')),
+        SnackBar(content: Text('명소 추천 생성에 실패했습니다: ${e.toString()}')),
       );
     } finally {
       setState(() {
-        _isGeneratingRecommendation = false;
+        _isGeneratingLocationRecommendation = false;
+      });
+    }
+  }
+
+  Future<void> _getAiRestaurantRecommendations() async {
+    if (_selectedSido == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('시/도를 선택해주세요.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGeneratingRestaurantRecommendation = true;
+      _parsedRecommendedRestaurants.clear();
+      _rawAiRestaurantRecommendationResult = '';
+
+      _parsedRecommendedLocations.clear(); // Clear other type's data
+      _rawAiLocationRecommendationResult = ''; // Clear other type's raw data
+      _currentRecommendationType = 'restaurant'; // Set current type
+    });
+
+    try {
+      String locationPrompt = _selectedSido!;
+      if (_selectedSido == '세종특별자치시' && _selectedSigungu != null && _sejongDisplayToRawNameMap.containsKey(_selectedSigungu!)) {
+        locationPrompt = _sejongDisplayToRawNameMap[_selectedSigungu!]!;
+      } else if (_selectedSigungu != null && _selectedSigungu!.isNotEmpty && _selectedSigungu! != _selectedSido!) {
+        locationPrompt += ' $_selectedSigungu';
+      }
+
+      // Updated prompt to explicitly request the format.
+      // Removed the "맛집:" header from the format request in the prompt
+      // to make parsing more robust, as the regex doesn't rely on it.
+      String userPrompt = "$locationPrompt 에 있는 맛집 3군데를 추천해줘. 각 추천에는 간단한 설명도 포함해줘. "
+                          "응답은 반드시 다음 형식으로 해줘: "
+                          "1. [맛집1 이름] - [간단 설명]\n2. [맛집2 이름] - [간단 설명]\n3. [맛집3 이름] - [간단 설명]";
+
+      final response = await GeminiService.getRecommendation(userPrompt);
+
+      debugPrint('--- Gemini Raw Response (Restaurant) ---');
+      debugPrint(response);
+      debugPrint('------------------------------------');
+
+      // The _parseRecommendedItems method now calls setState internally.
+      _parseRecommendedItems(response, 'restaurant');
+
+    } catch (e) {
+      debugPrint('맛집 추천 생성 실패: $e');
+      setState(() {
+        _rawAiRestaurantRecommendationResult = '맛집 추천을 생성하는 중 오류가 발생했습니다: ${e.toString()}';
+        _parsedRecommendedRestaurants.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('맛집 추천 생성에 실패했습니다: ${e.toString()}')),
+      );
+    } finally {
+      setState(() {
+        _isGeneratingRestaurantRecommendation = false;
       });
     }
   }
@@ -320,26 +418,25 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
   Widget build(BuildContext context) {
     if (_isLoadingGeoJson) {
       return Scaffold(
-        appBar: AppBar(title: const Text('AI 여행지 추천')),
+        appBar: AppBar(title: const Text('여행지 추천')), // 변경: AI 여행지 추천 -> 여행지 추천
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('AI 여행지 추천')),
+      appBar: AppBar(title: const Text('여행지 추천')), // 변경: AI 여행지 추천 -> 여행지 추천
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              '여행 지역을 선택하고 AI 추천을 받아보세요!',
+              '여행 지역을 선택하고 추천을 받아보세요!', // 변경: AI 추천 -> 추천
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
 
-            // 시/도 선택 드롭다운 (필수)
             DropdownButtonFormField<String>(
               value: _selectedSido,
               hint: const Text('지역 (시/도) 선택 *'),
@@ -356,13 +453,18 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
               onChanged: (String? newValue) {
                 setState(() {
                   _selectedSido = newValue;
-                  _selectedSigungu = null; // 시도가 바뀌면 세부 지역 초기화
+                  _selectedSigungu = null;
+                  // Clear all recommendation data when region changes
+                  _parsedRecommendedLocations.clear();
+                  _parsedRecommendedRestaurants.clear();
+                  _rawAiLocationRecommendationResult = '';
+                  _rawAiRestaurantRecommendationResult = '';
+                  _currentRecommendationType = null;
                 });
               },
             ),
             const SizedBox(height: 8),
 
-            // 세부 지역 드롭다운 (선택된 시도에 따라 필터링)
             DropdownButtonFormField<String>(
               value: _selectedSigungu,
               hint: const Text('세부 지역 (시/군/구/읍/면/동) 선택'),
@@ -382,6 +484,12 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
                   ? (String? newValue) {
                       setState(() {
                         _selectedSigungu = newValue;
+                        // Clear all recommendation data when sub-region changes
+                        _parsedRecommendedLocations.clear();
+                        _parsedRecommendedRestaurants.clear();
+                        _rawAiLocationRecommendationResult = '';
+                        _rawAiRestaurantRecommendationResult = '';
+                        _currentRecommendationType = null;
                       });
                       if (newValue != null && newValue.isNotEmpty) {
                         Fluttertoast.showToast(
@@ -395,61 +503,177 @@ class _AiRecommendationScreenState extends State<AiRecommendationScreen> {
                         );
                       }
                     }
-                  : null, // 시도가 선택되지 않으면 비활성화
+                  : null,
               isExpanded: true,
               menuMaxHeight: 300,
             ),
 
             const SizedBox(height: 24),
 
-            ElevatedButton(
-              onPressed: _isGeneratingRecommendation || _selectedSido == null
-                  ? null
-                  : _getAiRecommendations,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isGeneratingLocationRecommendation || _selectedSido == null
+                        ? null
+                        : _getAiLocationRecommendations,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isGeneratingLocationRecommendation
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              SizedBox(width: 8),
+                              Text('명소 추천 중...', style: TextStyle(fontSize: 16)),
+                            ],
+                          )
+                        : const Text('명소 추천 받기', style: TextStyle(fontSize: 16)),
+                  ),
                 ),
-              ),
-              child: _isGeneratingRecommendation
-                  ? const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(color: Colors.white),
-                        SizedBox(width: 16),
-                        Text('추천 생성 중...', style: TextStyle(fontSize: 18)),
-                      ],
-                    )
-                  : const Text('AI 추천 받기', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isGeneratingRestaurantRecommendation || _selectedSido == null
+                        ? null
+                        : _getAiRestaurantRecommendations,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isGeneratingRestaurantRecommendation
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              SizedBox(width: 8),
+                              Text('맛집 추천 중...', style: TextStyle(fontSize: 16)),
+                            ],
+                          )
+                        : const Text('맛집 추천 받기', style: TextStyle(fontSize: 16)),
+                  ),
+                ),
+              ],
             ),
-
             const SizedBox(height: 32),
 
-            if (_aiRecommendationResult.isNotEmpty)
+            // Display parsed results if available for the current recommendation type
+            if (_currentRecommendationType != null &&
+                ((_currentRecommendationType == 'location' && _parsedRecommendedLocations.isNotEmpty) ||
+                 (_currentRecommendationType == 'restaurant' && _parsedRecommendedRestaurants.isNotEmpty)))
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'AI 추천 결과:',
+                    '추천 결과:', // 변경: AI 추천 결과 -> 추천 결과
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+
+                  if (_currentRecommendationType == 'location' && _parsedRecommendedLocations.isNotEmpty) ...[
+                    const Text(
+                      '명소:',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                    child: Text(
-                      _aiRecommendationResult,
-                      style: const TextStyle(fontSize: 16, height: 1.5),
+                    const SizedBox(height: 8),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _parsedRecommendedLocations.length,
+                      itemBuilder: (context, index) {
+                        final item = _parsedRecommendedLocations[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${index + 1}. ', style: const TextStyle(fontSize: 16)),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item['name']!,
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                    ),
+                                    Text(
+                                      '- ${item['description']!}',
+                                      style: const TextStyle(fontSize: 15),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  ),
+                  ],
+
+                  if (_currentRecommendationType == 'restaurant' && _parsedRecommendedRestaurants.isNotEmpty) ...[
+                    const Text(
+                      '맛집:',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _parsedRecommendedRestaurants.length,
+                      itemBuilder: (context, index) {
+                        final item = _parsedRecommendedRestaurants[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${index + 1}. ', style: const TextStyle(fontSize: 16)),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item['name']!,
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                    ),
+                                    Text(
+                                      '- ${item['description']!}',
+                                      style: const TextStyle(fontSize: 15),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ],
+              ),
+            // Display "No recommendation found" message only if no items are parsed AND not currently generating
+            if (_currentRecommendationType != null &&
+                _parsedRecommendedLocations.isEmpty && _parsedRecommendedRestaurants.isEmpty &&
+                !_isGeneratingLocationRecommendation && !_isGeneratingRestaurantRecommendation)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(
+                  child: Text(
+                    '추천 결과를 찾을 수 없습니다. 다시 시도해 주세요.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ),
               ),
           ],
         ),
