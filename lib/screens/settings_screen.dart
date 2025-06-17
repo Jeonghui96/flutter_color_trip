@@ -655,9 +655,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ],
-          const SizedBox(height: 24),
-         
-          const SizedBox(height: 24),
+       const Divider(height: 32), // ✅ 구분선으로 변경
           const Text('기타', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           ListTile(
             leading: const Icon(Icons.info),

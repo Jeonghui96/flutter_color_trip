@@ -25,7 +25,7 @@ class _MapScreenState extends State<MapScreen>with AutomaticKeepAliveClientMixin
   }
 
   GoogleMapController? _mapController;
-  final LatLng _initialPosition = const LatLng(36.5, 127.8); // 대한민국 중심
+  final LatLng _initialPosition = const LatLng(35.7, 127.8); // 대한민국 중심
   Set<Polygon> _polygons = {};
   Map<String, dynamic> _sidoGeoJson = {}; // 시도 GeoJSON 데이터
   bool _isLoading = true; // 초기 로딩 상태는 true

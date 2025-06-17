@@ -12,7 +12,8 @@ class MyTripsScreen extends StatefulWidget {
   State<MyTripsScreen> createState() => _MyTripsScreenState();
 }
 
-class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveClientMixin {
+class _MyTripsScreenState extends State<MyTripsScreen>
+    with AutomaticKeepAliveClientMixin {
   bool _isEditMode = false;
   final Set<String> _selectedTripIds = {};
   final ScrollController _scrollController = ScrollController();
@@ -41,9 +42,9 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
 
   Future<void> _deleteSelectedTrips(String uid) async {
     if (_selectedTripIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("선택된 여행 기록이 없습니다.")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("선택된 여행 기록이 없습니다.")));
       return;
     }
 
@@ -87,13 +88,13 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
           _isEditMode = false;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("선택된 여행 기록이 삭제되었습니다.")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("선택된 여행 기록이 삭제되었습니다.")));
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("삭제 실패: \$e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("삭제 실패: \$e")));
       }
     }
   }
@@ -112,9 +113,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
-      return const Scaffold(
-        body: Center(child: Text("로그인이 필요합니다.")),
-      );
+      return const Scaffold(body: Center(child: Text("로그인이 필요합니다.")));
     }
 
     return PopScope(
@@ -181,8 +180,13 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                 final place = data['place'] as String? ?? '';
                 final memo = data['memo'] ?? data['review'] ?? '';
                 final colorValue = data['color'];
-                final tripColor = colorValue is int ? Color(colorValue) : Colors.grey;
-                final locationText = [city, sigungu].where((e) => e.isNotEmpty).join(' ');
+                final tripColor = colorValue is int
+                    ? Color(colorValue)
+                    : Colors.grey;
+                final locationText = [
+                  city,
+                  sigungu,
+                ].where((e) => e.isNotEmpty).join(' ');
 
                 return ListTile(
                   leading: Row(
@@ -196,11 +200,19 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                           },
                         ),
                       imageUrl.isNotEmpty
-                          ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover)
+                          ? Image.network(
+                              imageUrl,
+                              width: 50,
+                              height: 50,
+                              fit: BoxFit.cover,
+                            )
                           : const Icon(Icons.image, size: 50),
                     ],
                   ),
-                  title: Text(place, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  title: Text(
+                    place,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -218,7 +230,10 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                               border: Border.all(color: Colors.black26),
                             ),
                           ),
-                          const Text('색칠하기', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          const Text(
+                            '색칠하기',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
                         ],
                       ),
                       if (memo.isNotEmpty)
@@ -226,7 +241,10 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             memo,
-                            style: const TextStyle(fontSize: 12, color: Colors.black87),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black87,
+                            ),
                           ),
                         ),
                     ],
@@ -234,7 +252,9 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                   trailing: TextButton(
                     child: const Text("색칠하기"),
                     onPressed: () async {
-                      String regionNameToApply = sigungu.isNotEmpty ? sigungu : city;
+                      String regionNameToApply = sigungu.isNotEmpty
+                          ? sigungu
+                          : city;
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
@@ -254,9 +274,6 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                       );
                       if (confirmed == true && widget.onApplyColor != null) {
                         widget.onApplyColor!(regionNameToApply, tripColor);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("\$regionNameToApply 에 색상이 적용되었습니다.")),
-                        );
                       }
                     },
                   ),
