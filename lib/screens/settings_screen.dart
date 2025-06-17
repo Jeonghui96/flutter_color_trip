@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart'; // Clipboard 사용을 위해 import
+import 'package:share_plus/share_plus.dart'; // share_plus import
 import 'package:uuid/uuid.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'map_container_screen.dart'; // MapContainerScreen을 import 합니다.
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'my_trips_screen.dart'; // my_trips_screen.dart import
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // dotenv import
 
 
 class SettingsScreen extends StatefulWidget {
@@ -20,8 +20,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? groupName;
   String? groupId;
   String? groupPassword;
-  String? groupOwnerId;
-  List<Map<String, String>> groupMembersWithId = [];
+  String? groupOwnerId; // 그룹장 UID
+  List<Map<String, String>> groupMembersWithId = []; // 그룹 멤버 목록 (UID 포함)
   String? _nickname;
 
   @override
@@ -36,15 +36,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadUserInfoAndGroupInfo();
   }
 
+  // dispose 메서드에서 활성화된 작업을 취소하는 것이 좋습니다 (예: StreamSubscription)
+  // 현재 이 코드에는 직접적으로 취소할 스트림 구독이 보이지 않으므로 큰 문제는 없지만
+  // 만약 나중에 스트림 구독이 추가된다면 여기서 cancel()을 호출해야 합니다.
   @override
   void dispose() {
+    // _scrollController.dispose(); // 만약 ScrollController가 있었다면 여기서 dispose
     super.dispose();
   }
 
   Future<void> _loadUserInfoAndGroupInfo() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
-      if (!mounted) return;
+      if (!mounted) return; // 추가: 위젯이 마운트 해제되었다면 업데이트하지 않음
       setState(() {
         _nickname = null;
         groupId = null;
@@ -59,7 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
     final userData = userDoc.data();
 
-    if (!mounted) return;
+    if (!mounted) return; // 추가: 위젯이 마운트 해제되었다면 업데이트하지 않음
     setState(() {
       _nickname = userData?['nickname'] as String?;
     });
@@ -67,7 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final gid = userData?['groupId'] as String?;
 
     if (gid == null) {
-      if (!mounted) return;
+      if (!mounted) return; // 추가: 위젯이 마운트 해제되었다면 업데이트하지 않음
       setState(() {
         groupId = null;
         groupName = null;
@@ -97,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
 
-    if (!mounted) return;
+    if (!mounted) return; // 추가: 위젯이 마운트 해제되었다면 업데이트하지 않음
     setState(() {
       groupId = gid;
       groupName = groupData?['name'] as String?;
@@ -109,7 +113,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _createGroup(BuildContext context) async {
     if (groupId != null) {
-      if (!mounted) return;
+      if (!mounted) return; // 추가
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('이미 그룹에 가입되어 있어요')));
       return;
     }
@@ -137,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final name = nameController.text.trim();
               final password = passwordController.text.trim();
               if (name.isEmpty || password.isEmpty) {
-                if (!mounted) return;
+                if (!mounted) return; // 추가
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('그룹 이름과 비밀번호를 입력해주세요.')));
                 return;
               }
@@ -161,7 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'displayName': currentMemberDisplayName,
                 });
               }
-              if (!mounted) return;
+              if (!mounted) return; // 추가: setState 전에 mounted 확인
               setState(() {
                 groupId = gid;
                 groupName = name;
@@ -169,9 +173,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 groupOwnerId = uid;
                 groupMembersWithId = newGroupMembersWithId;
               });
-              if (!mounted) return;
+              if (!mounted) return; // 추가: Navigator.pop 전에 mounted 확인
               Navigator.pop(ctx);
-              if (!mounted) return;
+              if (!mounted) return; // 추가
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('그룹 생성 완료! 코드: $gid')));
             },
             child: const Text('생성'),
@@ -183,7 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _joinGroup(BuildContext context) async {
     if (groupId != null) {
-      if (!mounted) return;
+      if (!mounted) return; // 추가
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('이미 그룹에 가입되어 있어요')));
       return;
     }
@@ -211,13 +215,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final code = codeController.text.trim();
               final password = passwordController.text.trim();
               if (code.isEmpty || password.isEmpty) {
-                if (!mounted) return;
+                if (!mounted) return; // 추가
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('그룹 코드와 비밀번호를 입력해주세요.')));
                 return;
               }
               final groupDoc = await FirebaseFirestore.instance.collection('groups').doc(code).get();
               if (!groupDoc.exists || groupDoc.data()?['password'] != password) {
-                if (!mounted) return;
+                if (!mounted) return; // 추가
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('그룹 코드 또는 비밀번호가 잘못되었습니다')));
                 return;
               }
@@ -225,10 +229,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 {'groupId': code, 'email': userEmail ?? 'unknown'},
                 SetOptions(merge: true),
               );
-              if (!mounted) return;
+              if (!mounted) return; // 추가: Navigator.pop 전에 mounted 확인
               Navigator.pop(ctx);
-              if (!mounted) return;
+              if (!mounted) return; // 추가
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('그룹에 참여하였습니다')));
+              // _loadUserInfoAndGroupInfo() 내부에서도 mounted 확인 필요
               _loadUserInfoAndGroupInfo();
             },
             child: const Text('참여'),
@@ -242,7 +247,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
-        if (!mounted) return;
+        // 사용자가 로그인을 취소한 경우
+        if (!mounted) return; // 추가: 이 경우에도 mounted 확인
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('구글 로그인이 취소되었습니다.')));
         return;
       }
@@ -252,8 +258,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      await FirebaseAuth.instance.signInWithCredential(credential);
-      final user = FirebaseAuth.instance.currentUser;
+      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
 
       if (user != null && user.email != null) {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
@@ -262,11 +268,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
 
+      // 🚨 여기가 문제였던 부분입니다. ScaffoldMessenger 사용 전에 mounted 확인.
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('구글 로그인 완료')));
       
+      // _loadUserInfoAndGroupInfo() 내부에서도 setState 전에 mounted 확인 필요
       _loadUserInfoAndGroupInfo();
     } catch (e) {
+      // 🚨 에러 발생 시 ScaffoldMessenger 사용 전에 mounted 확인.
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('로그인 실패: $e')));
       debugPrint('Google Sign-In Error: $e');
@@ -293,7 +302,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               final newNickname = nicknameController.text.trim();
               if (newNickname.isEmpty) {
-                if (!mounted) return;
+                if (!mounted) return; // 추가
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('닉네임을 입력해주세요.')));
                 return;
               }
@@ -301,13 +310,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 {'nickname': newNickname},
                 SetOptions(merge: true),
               );
-              if (!mounted) return;
+              if (!mounted) return; // 추가: setState 전에 mounted 확인
               setState(() {
                 _nickname = newNickname;
               });
-              if (!mounted) return;
+              if (!mounted) return; // 추가: Navigator.pop 전에 mounted 확인
               Navigator.pop(ctx);
-              if (!mounted) return;
+              if (!mounted) return; // 추가
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('닉네임이 설정되었습니다.')));
               _loadUserInfoAndGroupInfo();
             },
@@ -360,13 +369,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           await FirebaseFirestore.instance.collection('groups').doc(groupId).delete();
 
-          if (!mounted) return;
+          if (!mounted) return; // 추가
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('그룹장으로 그룹을 삭제하고 나갔습니다.')),
           );
         } catch (e) {
-          debugPrint('그룹 삭제 중 오류 발생: $e');
-          if (!mounted) return;
+          debugPrint('그룹 삭제 중 오류 발생: $e'); // print 대신 debugPrint 권장
+          if (!mounted) return; // 추가
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('그룹 삭제 중 오류 발생: $e')),
           );
@@ -375,12 +384,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await FirebaseFirestore.instance.collection('users').doc(uid).update({
           'groupId': FieldValue.delete(),
         });
-        if (!mounted) return;
+        if (!mounted) return; // 추가
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('그룹에서 나갔습니다.')),
         );
       }
-      if (!mounted) return;
+      if (!mounted) return; // 추가: setState 전에 mounted 확인
       setState(() {
         groupId = null;
         groupName = null;
@@ -391,15 +400,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // 그룹 멤버 강퇴 로직 (그룹장만 가능)
   Future<void> _kickMember(String memberUid, String memberDisplayName) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || groupId == null || uid != groupOwnerId) {
-      if (!mounted) return;
+      if (!mounted) return; // 추가
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('그룹장만 멤버를 강퇴할 수 있습니다.')));
       return;
     }
     if (memberUid == uid) {
-      if (!mounted) return;
+      if (!mounted) return; // 추가
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('자기 자신을 강퇴할 수 없습니다. 그룹 나가기는 아래 버튼을 이용해주세요.')));
       return;
     }
@@ -421,14 +431,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await FirebaseFirestore.instance.collection('users').doc(memberUid).update({
           'groupId': FieldValue.delete(),
         });
-        if (!mounted) return;
+        if (!mounted) return; // 추가
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$memberDisplayName 님이 그룹에서 강퇴되었습니다.')),
         );
-        _loadUserInfoAndGroupInfo();
+        _loadUserInfoAndGroupInfo(); // _loadUserInfoAndGroupInfo() 내부에서도 mounted 확인 필요
       } catch (e) {
-        debugPrint('멤버 강퇴 중 오류 발생: $e');
-        if (!mounted) return;
+        debugPrint('멤버 강퇴 중 오류 발생: $e'); // print 대신 debugPrint 권장
+        if (!mounted) return; // 추가
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('멤버 강퇴 중 오류 발생: $e')),
         );
@@ -566,14 +576,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (groupId != null && groupPassword != null) {
                           final textToCopy = '그룹 코드: $groupId\n비밀번호: ${groupPassword ?? ''}';
                           Clipboard.setData(ClipboardData(text: textToCopy));
-                          if (!mounted) return;
+                          if (!mounted) return; // 추가
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('그룹 코드와 비밀번호가 복사되었습니다.')),
                           );
                         } else if (groupId != null) {
                           final textToCopy = '그룹 코드: $groupId';
                           Clipboard.setData(ClipboardData(text: textToCopy));
-                          if (!mounted) return;
+                          if (!mounted) return; // 추가
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('그룹 코드가 복사되었습니다.')),
                           );
@@ -609,12 +619,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   if (currentUid == groupOwnerId && memberUid != currentUid) {
                                     _kickMember(memberUid!, displayName);
                                   } else if (memberUid == currentUid) {
-                                    if (!mounted) return;
+                                    if (!mounted) return; // 추가
                                      ScaffoldMessenger.of(context).showSnackBar(
                                        const SnackBar(content: Text('자기 자신을 강퇴할 수 없습니다. 그룹 나가기는 아래 버튼을 이용하세요.')),
                                      );
                                   } else {
-                                    if (!mounted) return;
+                                    if (!mounted) return; // 추가
                                      ScaffoldMessenger.of(context).showSnackBar(
                                        const SnackBar(content: Text('그룹장만 멤버를 강퇴할 수 있습니다.')),
                                      );
@@ -646,25 +656,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
           const SizedBox(height: 24),
-          const Text('내 여행 기록', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          ListTile(
-            leading: const Icon(Icons.map),
-            title: const Text('내가 업로드한 여행 보기', style: TextStyle(color: Colors.black)),
-            onTap: () {
-              // SettingsScreen을 닫고 이전 화면(MapContainerScreen)으로 돌아갑니다.
-              // MapContainerScreen이 PageView를 통해 MyTripsScreen을 포함하고 있으므로,
-              // MapContainerScreen으로 돌아가면 정상적으로 MyTripsScreen의 기능이 작동합니다.
-              Navigator.pop(context);
-            },
-            trailing: const Icon(Icons.chevron_right),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+         
           const SizedBox(height: 24),
           const Text('기타', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('앱 정보'),
-            subtitle: const Text('버전 1.0.0'),
+            subtitle: const Text('버전 1.0.0'), // 이 부분은 실제 앱 버전에 맞게 수정하세요.
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           FirebaseAuth.instance.currentUser != null
@@ -673,10 +671,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: const Text('로그아웃'),
       onTap: () async {
         await FirebaseAuth.instance.signOut();
+        // 🚨 여기도 mounted 확인이 필요합니다.
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('로그아웃 되었습니다')),
         );
+        // setState() 전에 mounted 확인
         if (!mounted) return;
         setState(() {
           _nickname = null;

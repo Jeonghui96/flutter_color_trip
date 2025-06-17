@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class MyTripsScreen extends StatefulWidget {
   final void Function(String regionName, Color color)? onApplyColor;
@@ -19,14 +20,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
   void _toggleEditMode() {
-    if (!mounted) return;
     setState(() {
       _isEditMode = !_isEditMode;
       if (!_isEditMode) {
@@ -36,7 +30,6 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
   }
 
   void _toggleSelectTrip(String tripId) {
-    if (!mounted) return;
     setState(() {
       if (_selectedTripIds.contains(tripId)) {
         _selectedTripIds.remove(tripId);
@@ -48,7 +41,6 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
 
   Future<void> _deleteSelectedTrips(String uid) async {
     if (_selectedTripIds.isEmpty) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("선택된 여행 기록이 없습니다.")),
       );
@@ -60,7 +52,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text("선택된 기록 삭제"),
-          content: Text("선택된 ${_selectedTripIds.length}개의 여행 기록을 삭제하시겠습니까?"),
+          content: Text("선택된 \${_selectedTripIds.length}개의 여행 기록을 삭제하시겠습니까?"),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -90,22 +82,18 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
         }
         await batch.commit();
 
-        if (!mounted) return;
         setState(() {
           _selectedTripIds.clear();
           _isEditMode = false;
         });
 
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("선택된 여행 기록이 삭제되었습니다.")),
         );
       } catch (e) {
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("삭제 실패: $e")),
+          SnackBar(content: Text("삭제 실패: \$e")),
         );
-        debugPrint('Error deleting trips: $e');
       }
     }
   }
@@ -124,18 +112,8 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text("내 여행 기록"),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              if (!mounted) return;
-              Navigator.of(context).pop();
-            },
-          ),
-        ),
-        body: const Center(child: Text("로그인이 필요합니다.")),
+      return const Scaffold(
+        body: Center(child: Text("로그인이 필요합니다.")),
       );
     }
 
@@ -184,11 +162,6 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (snapshot.hasError) {
-              debugPrint('Firestore Stream Error: ${snapshot.error}');
-              return Center(child: Text('데이터 로드 중 오류 발생: ${snapshot.error}'));
-            }
-
             final docs = snapshot.data?.docs ?? [];
             if (docs.isEmpty) {
               return const Center(child: Text("업로드한 여행이 없습니다."));
@@ -209,7 +182,6 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                 final memo = data['memo'] ?? data['review'] ?? '';
                 final colorValue = data['color'];
                 final tripColor = colorValue is int ? Color(colorValue) : Colors.grey;
-
                 final locationText = [city, sigungu].where((e) => e.isNotEmpty).join(' ');
 
                 return ListTile(
@@ -224,16 +196,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                           },
                         ),
                       imageUrl.isNotEmpty
-                          ? Image.network(
-                              imageUrl,
-                              width: 50,
-                              height: 50,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                debugPrint('Image load error for $imageUrl: $error');
-                                return const Icon(Icons.broken_image, size: 50);
-                              },
-                            )
+                          ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover)
                           : const Icon(Icons.image, size: 50),
                     ],
                   ),
@@ -272,12 +235,11 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                     child: const Text("색칠하기"),
                     onPressed: () async {
                       String regionNameToApply = sigungu.isNotEmpty ? sigungu : city;
-
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
                           title: const Text("지도 색상 적용"),
-                          content: Text("'$regionNameToApply' 지역에 이 색상을 적용하시겠습니까?"),
+                          content: const Text("이 색상을 지도에 적용하시겠습니까?"),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.of(context).pop(false),
@@ -290,25 +252,11 @@ class _MyTripsScreenState extends State<MyTripsScreen> with AutomaticKeepAliveCl
                           ],
                         ),
                       );
-
-                      if (confirmed == true) {
-                        if (widget.onApplyColor != null) {
-                          debugPrint('MyTripsScreen: Calling onApplyColor for $regionNameToApply with color $tripColor');
-                          widget.onApplyColor!(regionNameToApply, tripColor);
-
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text("'$regionNameToApply' 지역에 색상이 적용되었습니다.")),
-                          );
-                        } else {
-                          debugPrint('MyTripsScreen: onApplyColor callback is NULL. Cannot apply color to map.');
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("지도 적용 기능이 활성화되어 있지 않습니다.")),
-                          );
-                        }
-                      } else {
-                        debugPrint('MyTripsScreen: Color application to $regionNameToApply cancelled by user.');
+                      if (confirmed == true && widget.onApplyColor != null) {
+                        widget.onApplyColor!(regionNameToApply, tripColor);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("\$regionNameToApply 에 색상이 적용되었습니다.")),
+                        );
                       }
                     },
                   ),

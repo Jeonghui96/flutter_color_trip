@@ -4,8 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_colortrip_app/providers/auth_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
+import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_exif_rotation/flutter_exif_rotation.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -14,13 +16,13 @@ import 'package:fluttertoast/fluttertoast.dart';
 
 
 class UploadScreen extends StatefulWidget {
-  final String uid;
+  
   final String? groupId;
   final VoidCallback? onUploadComplete;
 
   const UploadScreen({
     super.key,
-    required this.uid,
+   
     this.groupId,
     this.onUploadComplete,
   });
@@ -30,6 +32,11 @@ class UploadScreen extends StatefulWidget {
 }
 
 class _UploadScreenState extends State<UploadScreen> {
+  String get uid {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    return authProvider.user?.uid ?? '';
+  }
+
   File? _image;
   bool _isLoading = false;
   List<Color> _extractedColors = [];
@@ -447,7 +454,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
   final fileName = path.basename(_image!.path);
   final ref = FirebaseStorage.instance.ref().child(
-    'uploads/${widget.uid}/$fileName',
+    'uploads/${uid}/$fileName',
   );
 
   try {
@@ -473,7 +480,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
     await FirebaseFirestore.instance
         .collection('users')
-        .doc(widget.uid)
+        .doc(uid)
         .collection('trips')
         .doc(docId)
         .set(tripData);
