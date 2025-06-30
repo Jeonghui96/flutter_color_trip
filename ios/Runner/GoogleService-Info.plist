@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu.apps.googleusercontent.com</string>
+	<string>257359194449-etrhkdluv7v3i109pesbu2qi3iu7h873.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu</string>
+	<string>com.googleusercontent.apps.257359194449-etrhkdluv7v3i109pesbu2qi3iu7h873</string>
 	<key>ANDROID_CLIENT_ID</key>
 	<string>257359194449-5mdgh182e2q8d7g5ndn9q2eh64n78kt7.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
@@ -15,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.example.flutterColortripApp</string>
+	<string>com.sparta.colortrip</string>
 	<key>PROJECT_ID</key>
 	<string>flutter-colortrip-36a9a</string>
 	<key>STORAGE_BUCKET</key>
@@ -31,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:257359194449:ios:f2e7582268d0f197640b70</string>
+	<string>1:257359194449:ios:d351c42553a3716c640b70</string>
 </dict>
 </plist>

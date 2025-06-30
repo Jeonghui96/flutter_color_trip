@@ -48,6 +48,42 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:257359194449:android:56bea9eda03d23c1640b70",
+        "android_client_info": {
+          "package_name": "com.sparta.colortrip"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "257359194449-rg9kl8i27deim0icoh2ke1qbc48ntduj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1CPrR8rqDrji-nSEt1kin5in0lJTU4oc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "257359194449-rg9kl8i27deim0icoh2ke1qbc48ntduj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.flutterColortripApp"
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"

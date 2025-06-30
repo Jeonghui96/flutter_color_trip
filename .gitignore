@@ -46,3 +46,4 @@ app.*.map.json
 
 # API keys and environment variables
 .env
+upload-keystore.jks

@@ -1,4 +1,4 @@
-package com.example.flutter_colortrip_app
+package com.sparta.colortrip
 
 import io.flutter.embedding.android.FlutterActivity
 
