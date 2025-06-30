@@ -611,10 +611,7 @@ class _UploadScreenState extends State<UploadScreen> {
             if (_selectedColorName != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Text(
-                  '선택된 색상: $_selectedColorName',
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
+                
               ),
             const SizedBox(height: 16),
 

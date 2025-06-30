@@ -262,9 +262,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final user = userCredential.user;
 
       if (user != null && user.email != null) {
+        print(user.uid);
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
           {'email': user.email},
-          SetOptions(merge: true),
+        //  SetOptions(merge: true),
         );
       }
 

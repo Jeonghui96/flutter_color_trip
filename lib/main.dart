@@ -20,19 +20,19 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // 테스트 계정으로 자동 로그인
-  final auth = FirebaseAuth.instance;
-  if (auth.currentUser == null) {
-    try {
-      await auth.signInWithEmailAndPassword(
-        email: 'testuser@colortrip.com',
-        password: 'test1234',
-      );
-      print('✅ 테스트 계정 로그인 성공: ${auth.currentUser?.uid}');
-    } catch (e) {
-      print('🔥 테스트 계정 로그인 실패: $e');
-    }
-  }
+  // // 테스트 계정으로 자동 로그인
+  // final auth = FirebaseAuth.instance;
+  // if (auth.currentUser == null) {
+  //   try {
+  //     await auth.signInWithEmailAndPassword(
+  //       email: 'testuser@colortrip.com',
+  //       password: 'test1234',
+  //     );
+  //     print('✅ 테스트 계정 로그인 성공: ${auth.currentUser?.uid}');
+  //   } catch (e) {
+  //     print('🔥 테스트 계정 로그인 실패: $e');
+  //   }
+  // }
 
   runApp(
     MultiProvider(
