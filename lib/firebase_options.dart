@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyB1CPrR8rqDrji-nSEt1kin5in0lJTU4oc',
-    appId: '1:257359194449:android:56bea9eda03d23c1640b70',
+    appId: '1:257359194449:android:3a678f19720bced7640b70',
     messagingSenderId: '257359194449',
     projectId: 'flutter-colortrip-36a9a',
     storageBucket: 'flutter-colortrip-36a9a.firebasestorage.app',
@@ -63,7 +63,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '257359194449',
     projectId: 'flutter-colortrip-36a9a',
     storageBucket: 'flutter-colortrip-36a9a.firebasestorage.app',
-    androidClientId: '257359194449-5mdgh182e2q8d7g5ndn9q2eh64n78kt7.apps.googleusercontent.com',
+    androidClientId: '257359194449-3l8hff86ss0m5e12jkdjjjecfoipivtv.apps.googleusercontent.com',
     iosClientId: '257359194449-etrhkdluv7v3i109pesbu2qi3iu7h873.apps.googleusercontent.com',
     iosBundleId: 'com.sparta.colortrip',
   );

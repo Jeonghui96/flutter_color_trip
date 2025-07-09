@@ -35,7 +35,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.flutter_colortrip_app"
+        applicationId = "com.sparta.colortrip"
         // 2. minSdkVersion 불일치 문제 해결:
         // Firebase 등 플러그인들이 요구하는 최소 SDK 버전 23으로 설정합니다.
         minSdk = 23 // flutter.minSdkVersion 대신 23으로 명시

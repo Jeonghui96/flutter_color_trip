@@ -39,10 +39,10 @@
               "client_type": 3
             },
             {
-              "client_id": "257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu.apps.googleusercontent.com",
+              "client_id": "257359194449-etrhkdluv7v3i109pesbu2qi3iu7h873.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.flutterColortripApp"
+                "bundle_id": "com.sparta.colortrip"
               }
             }
           ]
@@ -57,6 +57,14 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "257359194449-3l8hff86ss0m5e12jkdjjjecfoipivtv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.sparta.colortrip",
+            "certificate_hash": "49246f1ebfe081521a7f834e2e0c256abc561b13"
+          }
+        },
         {
           "client_id": "257359194449-rg9kl8i27deim0icoh2ke1qbc48ntduj.apps.googleusercontent.com",
           "client_type": 3
@@ -75,10 +83,10 @@
               "client_type": 3
             },
             {
-              "client_id": "257359194449-taee1dc7m98afbbfr0r10fljupqcg1hu.apps.googleusercontent.com",
+              "client_id": "257359194449-etrhkdluv7v3i109pesbu2qi3iu7h873.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.flutterColortripApp"
+                "bundle_id": "com.sparta.colortrip"
               }
             }
           ]
