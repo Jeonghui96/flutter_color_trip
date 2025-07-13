@@ -6,6 +6,8 @@ import 'package:share_plus/share_plus.dart'; // share_plus import
 import 'package:uuid/uuid.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart'; // 애플 로그인 import
+import 'package:firebase_core/firebase_core.dart';
+
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
